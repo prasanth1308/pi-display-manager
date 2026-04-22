@@ -104,9 +104,7 @@ async function loadFiles() {
 }
 
 function fileTypeIcon(type) {
-  if (type === 'video') return '🎬';
-  if (type === 'presentation') return '📊';
-  return '🖼️';
+  return type === 'video' ? '🎬' : '🖼️';
 }
 
 function renderFiles() {
@@ -268,9 +266,9 @@ async function openPlaylistEditor(playlistId = null) {
     document.getElementById('playlist-name-input').value = p.name;
     editorItems = p.items.map(i => ({
       media_file_id: i.media_file_id,
-      name: i.media_file.original_name,
-      type: i.media_file.file_type,
-      order: i.order,
+      name: i.original_name,
+      type: i.file_type,
+      order: i.sort_order,
       duration: i.duration,
     }));
   } else {

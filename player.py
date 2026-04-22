@@ -1,21 +1,53 @@
 """
-DisplayPlayer — controls mpv subprocess for fullscreen media playback.
+DisplayPlayer — lite version.
 
-Playback runs in a background thread that iterates playlist items.
-Control signals (pause/resume/next/stop) use threading.Event flags.
+Pi OS (Linux):
+  Images → fbi  (framebuffer, no X11 needed)
+  Videos → cvlc (VLC CLI)
+
+macOS (dev/testing):
+  Both   → open (opens in Preview / QuickTime for testing only)
 """
 
 import logging
+import os
+import platform
 import subprocess
 import threading
 import time
-from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# Set DISPLAY for X11 — mpv needs this to render on the TV
-DISPLAY_ENV = {"DISPLAY": ":0"}
+IS_LINUX = platform.system() == "Linux"
+
+
+def _build_cmd(path: str, file_type: str) -> list[str]:
+    if IS_LINUX:
+        if file_type == "image":
+            # fbi: framebuffer image viewer — no X11 required
+            # -T 1  : use virtual terminal 1
+            # -a    : auto-scale to screen
+            # -1    : show once and exit (we control the loop)
+            # -noverbose : suppress status output
+            return ["fbi", "-T", "1", "-a", "-1", "-noverbose", path]
+        else:
+            # cvlc: VLC without GUI
+            # --vout fb : framebuffer output (no X11)
+            # --play-and-exit : quit when video ends
+            return [
+                "cvlc",
+                "--fullscreen",
+                "--vout", "fb",
+                "--no-osd",
+                "--play-and-exit",
+                "--quiet",
+                path,
+            ]
+    else:
+        # macOS — just open with the default app (Preview / QuickTime)
+        # Used for development/testing only; not fullscreen
+        return ["open", path]
 
 
 class DisplayPlayer:
@@ -41,14 +73,12 @@ class DisplayPlayer:
     # ------------------------------------------------------------------
 
     def play_file(self, file_path: str, file_type: str, duration: float = 10.0):
-        """Play a single file immediately."""
         items = [{"path": file_path, "type": file_type, "duration": duration}]
         self.play_playlist(items, loop=False)
 
     def play_playlist(self, items: list[dict], loop: bool = True):
         """
-        Play a list of items.
-        Each item: {"path": str, "type": "image"|"video"|"presentation", "duration": float}
+        items: [{"path": str, "type": "image"|"video", "duration": float}, ...]
         """
         self._stop()
         if not items:
@@ -70,21 +100,21 @@ class DisplayPlayer:
         self._pause_event.set()
         with self._lock:
             self._status["is_paused"] = True
-        logger.info("Playback paused")
+        logger.info("Paused")
 
     def resume(self):
         self._pause_event.clear()
         with self._lock:
             self._status["is_paused"] = False
-        logger.info("Playback resumed")
+        logger.info("Resumed")
 
     def next(self):
         self._next_event.set()
-        logger.info("Skip to next item")
+        logger.info("Next item")
 
     def stop(self):
         self._stop()
-        logger.info("Playback stopped")
+        logger.info("Stopped")
 
     def get_status(self) -> dict:
         with self._lock:
@@ -96,8 +126,8 @@ class DisplayPlayer:
 
     def _stop(self):
         self._stop_event.set()
-        self._pause_event.clear()  # unblock any waiting loop
-        self._next_event.set()     # unblock wait loop
+        self._pause_event.clear()
+        self._next_event.set()      # unblock any waiting loop
 
         self._kill_process()
 
@@ -126,9 +156,7 @@ class DisplayPlayer:
 
             self._play_item(item)
 
-            # Wait for item duration (or next/stop signal)
             if item["type"] == "video":
-                # For video, wait until mpv exits naturally or signal fires
                 self._wait_for_process_or_signal()
             else:
                 self._wait_duration(item.get("duration", 10.0))
@@ -143,41 +171,25 @@ class DisplayPlayer:
         self._kill_process()
         with self._lock:
             self._status.update(
-                is_playing=False, is_paused=False, current_file=None,
-                current_index=0,
+                is_playing=False, is_paused=False,
+                current_file=None, current_index=0,
             )
 
     def _play_item(self, item: dict):
-        """Launch mpv for a single item."""
         self._kill_process()
-
-        path = item["path"]
-        file_type = item.get("type", "image")
-
-        cmd = [
-            "mpv",
-            "--fullscreen",
-            "--no-terminal",
-            "--really-quiet",
-        ]
-
-        if file_type == "video":
-            cmd.append(path)
-        else:
-            # Images and presentation slides
-            cmd += ["--no-audio", path]
-
-        import os
-        env = {**os.environ, **DISPLAY_ENV}
-
+        cmd = _build_cmd(item["path"], item.get("type", "image"))
         try:
-            self._process = subprocess.Popen(cmd, env=env)
+            self._process = subprocess.Popen(
+                cmd,
+                env={**os.environ},
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
         except FileNotFoundError:
-            logger.warning("mpv not found — running in dev mode, skipping playback")
+            logger.warning("Command not found: %s — skipping (dev mode?)", cmd[0])
             self._process = None
 
     def _wait_duration(self, duration: float):
-        """Wait for duration seconds, respecting pause and next/stop events."""
         elapsed = 0.0
         interval = 0.1
         while elapsed < duration:
@@ -188,7 +200,6 @@ class DisplayPlayer:
             time.sleep(interval)
 
     def _wait_for_process_or_signal(self):
-        """Wait until mpv exits or a control signal fires."""
         while True:
             if self._stop_event.is_set() or self._next_event.is_set():
                 return
@@ -209,5 +220,4 @@ class DisplayPlayer:
             self._process = None
 
 
-# Module-level singleton used by routers and scheduler
 player = DisplayPlayer()

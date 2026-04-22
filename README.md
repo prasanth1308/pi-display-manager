@@ -1,70 +1,63 @@
-# Pi Display Manager
+# Pi Display Manager (lite)
 
-A lightweight web-based media presentation system for **Raspberry Pi 3 Model A+** (512MB RAM) running **Raspberry Pi OS Lite**. Displays images, videos, and PowerPoint presentations on an office TV via HDMI.
+A lightweight web-based media display system for **Raspberry Pi 3 Model A+** (512MB RAM) running **Raspberry Pi OS Lite**. Upload images and videos from any browser on your network and play them on an office TV via HDMI.
 
 ## Features
 
-- **Upload** images, videos, and presentations (PPT/PPTX/PDF) from any browser on the local network
-- **Playlists** — organize files into ordered playlists with per-item display durations
-- **Schedules** — auto-play playlists at specific times using cron expressions
+- **Upload** images and videos from any browser on the local network
+- **Playlists** — order files into playlists with per-item display duration
+- **Schedules** — auto-play playlists at set times using cron expressions
 - **Remote control** — Play, Pause, Resume, Stop, Next from the web UI
-- **Physical keyboard** — arrow keys and spacebar work directly on the Pi
-- **Low resource usage** — uses `mpv` for playback, no heavy GUI stack
+- **No desktop required** — `fbi` renders images directly to the framebuffer, no X11 needed
+- **One dependency** — only `flask`, everything else is Python standard library
 
-## Hardware Requirements
+## Hardware
 
 | Component | Spec |
 |-----------|------|
 | Device | Raspberry Pi 3 Model A+ |
 | RAM | 512 MB |
-| Storage | 8GB+ microSD recommended |
-| OS | Raspberry Pi OS Lite (Bookworm/Bullseye) |
+| Storage | 8 GB+ microSD |
+| OS | Raspberry Pi OS Lite (Bullseye / Bookworm) |
 | Display | HDMI to TV |
 | Network | WiFi or Ethernet |
 
-## Quick Start (on the Pi)
+## Supported File Types
+
+| Type | Formats |
+|------|---------|
+| Images | `.jpg`, `.jpeg`, `.png`, `.gif`, `.bmp`, `.webp` |
+| Videos | `.mp4`, `.avi`, `.mkv`, `.mov`, `.webm` |
+
+## Quick Start — Raspberry Pi
 
 ```bash
 git clone <repo-url> /home/pi/pi-display-manager
 cd /home/pi/pi-display-manager
 chmod +x scripts/install.sh
 ./scripts/install.sh
-```
-
-Then start the server:
-```bash
 ./scripts/start.sh
 ```
 
-Access the web UI from any device on the same network:
+Open from any device on the same network:
 ```
-http://<pi-ip-address>:8000
+http://<pi-ip>:8000
 ```
 
-Find your Pi's IP with: `hostname -I`
+Find your Pi's IP: `hostname -I`
 
-## Manual Installation
+## Manual Installation — Raspberry Pi
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for full component details.
-
-### Dependencies
 ```bash
-sudo apt-get install -y xserver-xorg x11-xserver-utils openbox xinit
-sudo apt-get install -y feh mpv libreoffice-impress poppler-utils
-sudo apt-get install -y python3 python3-pip python3-venv
-```
+# System packages (no X11 needed)
+sudo apt-get update
+sudo apt-get install -y python3 python3-pip fbi vlc
 
-### Python Setup
-```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
+# Python
+pip install flask
 
-### Run
-```bash
-source venv/bin/activate
-uvicorn main:app --host 0.0.0.0 --port 8000
+# Run
+python3 main.py
 ```
 
 ## Run as a System Service (auto-start on boot)
@@ -76,76 +69,79 @@ sudo systemctl enable pi-display
 sudo systemctl start pi-display
 ```
 
-## Supported File Types
+## Development on Mac / PC
 
-| Type | Formats |
-|------|---------|
-| Images | `.jpg`, `.jpeg`, `.png`, `.gif`, `.bmp`, `.webp` |
-| Videos | `.mp4`, `.avi`, `.mkv`, `.mov`, `.webm` |
-| Presentations | `.pptx`, `.ppt`, `.odp`, `.pdf` |
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install flask
+python3 main.py
+```
 
-> Presentations are automatically converted to PNG images on upload using LibreOffice headless.
+Open `http://localhost:8000` — upload, create playlists, and test scheduling works fully. When you hit Play on Mac it opens the file in Preview / QuickTime via `open`, so you can verify the full flow without a Pi.
 
 ## Project Structure
 
 ```
 pi-display-manager/
-├── main.py                  # FastAPI app entry point
-├── database.py              # SQLite setup
-├── models.py                # Database models
-├── player.py                # Display controller (mpv)
-├── converter.py             # PPT/PDF → PNG conversion
-├── scheduler_service.py     # APScheduler integration
-├── routers/
-│   ├── files.py             # Upload/delete API
-│   ├── playlists.py         # Playlist CRUD API
-│   ├── schedules.py         # Schedule CRUD API
-│   └── control.py           # Playback control API
+├── main.py          # Flask app — all routes
+├── database.py      # SQLite setup (built-in sqlite3)
+├── player.py        # Display controller: fbi (images) + cvlc (videos)
+├── scheduler.py     # Cron scheduler using threading
 ├── frontend/
-│   ├── index.html           # Single-page web UI
+│   ├── index.html   # Single-page web UI
 │   └── static/
 │       ├── css/style.css
 │       └── js/app.js
 ├── scripts/
-│   ├── install.sh           # Full Pi setup script
-│   ├── start.sh             # Start server + display
-│   └── pi-display.service   # systemd service
-├── media/                   # Uploaded files (gitignored)
-├── converted/               # PPT→PNG outputs (gitignored)
-└── requirements.txt
+│   ├── install.sh           # Pi setup script
+│   ├── start.sh             # Start the server
+│   └── pi-display.service   # systemd unit file
+├── media/           # Uploaded files (gitignored)
+└── requirements.txt # Just: flask
 ```
 
-## Development (on Mac/PC)
+## How Display Works on the Pi
 
-```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
-```
+| File type | Tool | X11 needed? |
+|-----------|------|-------------|
+| Images | `fbi` (framebuffer image viewer) | No |
+| Videos | `cvlc` (VLC CLI with `--vout fb`) | No |
 
-> On non-Pi systems, playback controls will log commands but won't launch mpv unless it's installed.
+Both tools write directly to `/dev/fb0` (the HDMI framebuffer), so no desktop environment is required — keeping RAM usage low.
+
+## Cron Expression Reference
+
+Used for scheduling auto-play:
+
+| Expression | Meaning |
+|-----------|---------|
+| `0 9 * * *` | Every day at 9:00 AM |
+| `0 9 * * 1-5` | Weekdays at 9:00 AM |
+| `0 9,13,17 * * *` | 9 AM, 1 PM, and 5 PM daily |
+| `*/30 * * * *` | Every 30 minutes |
+
+Reference: [crontab.guru](https://crontab.guru)
 
 ## API Reference
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/files/` | List all uploaded files |
+| GET | `/api/files/` | List uploaded files |
 | POST | `/api/files/upload` | Upload a file |
-| DELETE | `/api/files/{id}` | Delete a file |
-| GET | `/api/playlists/` | List all playlists |
+| DELETE | `/api/files/<id>` | Delete a file |
+| GET | `/api/playlists/` | List playlists |
 | POST | `/api/playlists/` | Create a playlist |
-| PUT | `/api/playlists/{id}` | Update a playlist |
-| DELETE | `/api/playlists/{id}` | Delete a playlist |
-| GET | `/api/schedules/` | List all schedules |
+| GET | `/api/playlists/<id>` | Get playlist with items |
+| PUT | `/api/playlists/<id>` | Update a playlist |
+| DELETE | `/api/playlists/<id>` | Delete a playlist |
+| GET | `/api/schedules/` | List schedules |
 | POST | `/api/schedules/` | Create a schedule |
-| PUT | `/api/schedules/{id}` | Update a schedule |
-| DELETE | `/api/schedules/{id}` | Delete a schedule |
+| PUT | `/api/schedules/<id>` | Update a schedule |
+| DELETE | `/api/schedules/<id>` | Delete a schedule |
 | POST | `/api/control/play` | Play a file or playlist |
-| POST | `/api/control/pause` | Pause playback |
-| POST | `/api/control/resume` | Resume playback |
-| POST | `/api/control/stop` | Stop playback |
+| POST | `/api/control/pause` | Pause |
+| POST | `/api/control/resume` | Resume |
+| POST | `/api/control/stop` | Stop |
 | POST | `/api/control/next` | Skip to next item |
-| GET | `/api/control/status` | Get current playback status |
-
-Full interactive API docs: `http://<pi-ip>:8000/docs`
+| GET | `/api/control/status` | Current playback status |
