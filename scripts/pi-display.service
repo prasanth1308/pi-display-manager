@@ -1,0 +1,16 @@
+[Unit]
+Description=Pi Display Manager
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/pi-display-manager
+ExecStart=/home/pi/pi-display-manager/scripts/start.sh
+Restart=on-failure
+RestartSec=5
+Environment=DISPLAY=:0
+
+[Install]
+WantedBy=multi-user.target
