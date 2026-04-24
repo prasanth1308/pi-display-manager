@@ -65,7 +65,7 @@ def _build_cmd(paths: list[str], file_type: str, duration: float = 10.0) -> list
             # -noverbose : suppress status output
             # -1 : show once (loop through all images once then exit)
             # Multiple paths create a slideshow
-            return ["fbi", "-d", "/dev/fb0", "-a", "-t", str(int(duration)), "-noverbose", "-l"] + paths
+            return ["fbi", "-d", "/dev/fb0", "-a", "-t", str(int(duration)), "-noverbose"] + paths
         else:
             # cvlc: VLC without GUI (single video at a time)
             # --vout fb : framebuffer output (no X11)
