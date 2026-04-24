@@ -15,7 +15,4 @@ echo "Starting Pi Display Manager (lite)…"
 echo "Web UI: http://${PI_IP}:8000"
 echo ""
 
-exec uvicorn main:app \
-  --host 0.0.0.0 \
-  --port 8000 \
-  --workers 1
+exec python main.py

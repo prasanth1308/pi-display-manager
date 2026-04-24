@@ -4,6 +4,7 @@ import uuid
 from pathlib import Path
 
 from flask import Flask, jsonify, request, send_from_directory
+import yt_dlp
 
 import database
 from player import player
@@ -13,6 +14,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s — %(message)s",
 )
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__, static_folder="frontend/static", static_url_path="/static")
 app.url_map.strict_slashes = False
@@ -73,6 +75,52 @@ def upload_file():
     row = conn.execute("SELECT * FROM media_files WHERE id=?", (cur.lastrowid,)).fetchone()
     conn.close()
     return jsonify(dict(row))
+
+
+@app.route("/api/files/download-youtube", methods=["POST"])
+def download_youtube():
+    data = request.json or {}
+    url = data.get("url", "").strip()
+    
+    if not url:
+        return jsonify({"error": "No URL provided"}), 400
+    
+    try:
+        # Generate unique filename
+        video_id = str(uuid.uuid4())
+        output_template = str(MEDIA_DIR / f"{video_id}.%(ext)s")
+        
+        # yt-dlp options for 720p download
+        ydl_opts = {
+            'format': 'bestvideo[height<=720]+bestaudio/best[height<=720]',
+            'outtmpl': output_template,
+            'merge_output_format': 'mp4',
+            'quiet': False,
+            'no_warnings': False,
+        }
+        
+        # Download the video
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            video_title = info.get('title', 'Unknown')
+            final_filename = f"{video_id}.mp4"
+            file_path = MEDIA_DIR / final_filename
+        
+        # Add to database
+        conn = database.get_db()
+        cur = conn.execute(
+            "INSERT INTO media_files (filename, original_name, file_type, file_path) VALUES (?,?,?,?)",
+            (final_filename, video_title, "video", str(file_path)),
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM media_files WHERE id=?", (cur.lastrowid,)).fetchone()
+        conn.close()
+        
+        return jsonify(dict(row))
+        
+    except Exception as e:
+        logger.error(f"YouTube download error: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/files/<int:file_id>", methods=["DELETE"])

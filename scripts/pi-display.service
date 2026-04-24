@@ -5,12 +5,22 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=pi
-WorkingDirectory=/home/pi/pi-display-manager
-ExecStart=/home/pi/pi-display-manager/scripts/start.sh
+User=__USER__
+WorkingDirectory=__PROJECT_DIR__
+ExecStart=__PROJECT_DIR__/scripts/start.sh
 Restart=on-failure
 RestartSec=5
-Environment=DISPLAY=:0
+StandardOutput=journal
+StandardError=journal
+
+# Allow access to framebuffer and TTY devices
+SupplementaryGroups=video tty
+
+# Required for fbi to access framebuffer
+AmbientCapabilities=CAP_SYS_TTY_CONFIG
+
+# Environment for framebuffer access
+Environment="FRAMEBUFFER=/dev/fb0"
 
 [Install]
 WantedBy=multi-user.target

@@ -22,17 +22,52 @@ logger = logging.getLogger(__name__)
 IS_LINUX = platform.system() == "Linux"
 
 
-def _build_cmd(path: str, file_type: str) -> list[str]:
+def _kill_all_fbi():
+    """Kill any existing fbi processes to ensure clean framebuffer access."""
+    if not IS_LINUX:
+        return
+    
+    try:
+        # Find all fbi processes
+        result = subprocess.run(
+            ["pgrep", "-x", "fbi"],
+            capture_output=True,
+            text=True,
+            timeout=2
+        )
+        
+        if result.returncode == 0 and result.stdout.strip():
+            pids = result.stdout.strip().split('\n')
+            logger.info(f"Killing {len(pids)} existing fbi process(es)")
+            
+            for pid in pids:
+                try:
+                    subprocess.run(["kill", "-9", pid], timeout=1)
+                except Exception as e:
+                    logger.warning(f"Failed to kill fbi process {pid}: {e}")
+    except Exception as e:
+        logger.warning(f"Error checking for fbi processes: {e}")
+
+
+def _build_cmd(paths: list[str], file_type: str, duration: float = 10.0) -> list[str]:
+    """
+    Build command for playing media file(s).
+    
+    For images on Linux, fbi supports multiple files in one command,
+    creating a slideshow with automatic transitions.
+    """
     if IS_LINUX:
         if file_type == "image":
             # fbi: framebuffer image viewer — no X11 required
-            # -T 1  : use virtual terminal 1
+            # -d /dev/fb0 : explicitly use framebuffer device (required for service)
             # -a    : auto-scale to screen
-            # -1    : show once and exit (we control the loop)
+            # -t <sec> : display each image for <sec> seconds
             # -noverbose : suppress status output
-            return ["fbi", "-T", "1", "-a", "-1", "-noverbose", path]
+            # -1 : show once (loop through all images once then exit)
+            # Multiple paths create a slideshow
+            return ["fbi", "-d", "/dev/fb0", "-a", "-t", str(int(duration)), "-noverbose", "-l"] + paths
         else:
-            # cvlc: VLC without GUI
+            # cvlc: VLC without GUI (single video at a time)
             # --vout fb : framebuffer output (no X11)
             # --play-and-exit : quit when video ends
             return [
@@ -42,12 +77,13 @@ def _build_cmd(path: str, file_type: str) -> list[str]:
                 "--no-osd",
                 "--play-and-exit",
                 "--quiet",
-                path,
+                paths[0],  # Videos played one at a time
             ]
     else:
         # macOS — just open with the default app (Preview / QuickTime)
         # Used for development/testing only; not fullscreen
-        return ["open", path]
+        # Note: macOS 'open' doesn't support multiple files as slideshow
+        return ["open", paths[0]]
 
 
 class DisplayPlayer:
@@ -130,6 +166,7 @@ class DisplayPlayer:
         self._next_event.set()      # unblock any waiting loop
 
         self._kill_process()
+        _kill_all_fbi()  # Ensure all fbi processes are killed
 
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=3)
@@ -147,37 +184,111 @@ class DisplayPlayer:
 
         index = 0
         while not self._stop_event.is_set():
-            item = items[index]
+            # Group consecutive images with same duration into batches
+            batch, batch_size = self._get_next_batch(items, index)
             self._next_event.clear()
 
+            # Update status to first item in batch
             with self._lock:
-                self._status["current_file"] = item["path"]
+                self._status["current_file"] = batch[0]["path"]
                 self._status["current_index"] = index + 1
 
-            self._play_item(item)
-
-            if item["type"] == "video":
+            is_image_batch = batch[0]["type"] == "image" and len(batch) > 1
+            
+            if is_image_batch and IS_LINUX:
+                # Play all images in batch as fbi slideshow
+                self._play_image_batch(batch)
+                # fbi will handle timing, just wait for completion
+                self._wait_for_process_or_signal()
+            elif batch[0]["type"] == "image" and IS_LINUX:
+                # Single image on Linux - still use fbi
+                self._play_image_batch(batch)  # Works for single image too
                 self._wait_for_process_or_signal()
             else:
-                self._wait_duration(item.get("duration", 10.0))
+                # Single item (video or macOS fallback)
+                self._play_item(batch[0])
+                
+                if batch[0]["type"] == "video":
+                    self._wait_for_process_or_signal()
+                else:
+                    # macOS - manually wait
+                    self._wait_duration(batch[0].get("duration", 10.0))
 
             if self._stop_event.is_set():
                 break
 
-            index = (index + 1) % len(items)
+            index = (index + batch_size) % len(items)
             if not loop and index == 0:
                 break
 
         self._kill_process()
+        _kill_all_fbi()  # Final cleanup
         with self._lock:
             self._status.update(
                 is_playing=False, is_paused=False,
                 current_file=None, current_index=0,
             )
 
+    def _get_next_batch(self, items: list[dict], start_index: int) -> tuple[list[dict], int]:
+        """
+        Group consecutive images with the same duration into a batch.
+        Returns (batch_items, batch_size).
+        """
+        if start_index >= len(items):
+            return [items[0]], 1
+            
+        first_item = items[start_index]
+        
+        # If it's a video or not Linux, return single item
+        if first_item["type"] != "image" or not IS_LINUX:
+            return [first_item], 1
+        
+        # Batch consecutive images with same duration
+        batch = [first_item]
+        target_duration = first_item.get("duration", 10.0)
+        
+        for i in range(start_index + 1, len(items)):
+            item = items[i]
+            # Stop batching if we hit a video or different duration
+            if item["type"] != "image" or item.get("duration", 10.0) != target_duration:
+                break
+            batch.append(item)
+        
+        return batch, len(batch)
+
+    def _play_image_batch(self, batch: list[dict]):
+        """Play multiple images as a slideshow using fbi."""
+        self._kill_process()
+        _kill_all_fbi()  # Kill any stray fbi processes
+        
+        paths = [item["path"] for item in batch]
+        duration = batch[0].get("duration", 10.0)
+        cmd = _build_cmd(paths, "image", duration)
+        
+        logger.info("Starting fbi slideshow with %d images (%.1fs each)", len(batch), duration)
+        logger.debug(f"fbi command: {' '.join(cmd)}")
+        
+        try:
+            self._process = subprocess.Popen(
+                cmd,
+                env={**os.environ},
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            logger.debug(f"fbi process started with PID {self._process.pid}")
+        except FileNotFoundError:
+            logger.warning("Command not found: %s — skipping (dev mode?)", cmd[0])
+            self._process = None
+        except Exception as e:
+            logger.error(f"Failed to start fbi: {e}")
+            self._process = None
+
     def _play_item(self, item: dict):
         self._kill_process()
-        cmd = _build_cmd(item["path"], item.get("type", "image"))
+        # Kill any stray fbi processes if we're about to play an image
+        if item.get("type", "image") == "image":
+            _kill_all_fbi()
+        cmd = _build_cmd([item["path"]], item.get("type", "image"), item.get("duration", 10.0))
         try:
             self._process = subprocess.Popen(
                 cmd,
@@ -202,8 +313,21 @@ class DisplayPlayer:
     def _wait_for_process_or_signal(self):
         while True:
             if self._stop_event.is_set() or self._next_event.is_set():
+                logger.debug("Wait interrupted by signal")
                 return
             if self._process is None or self._process.poll() is not None:
+                if self._process and self._process.returncode is not None:
+                    logger.debug(f"Process exited with code {self._process.returncode}")
+                    # Log any errors from stderr
+                    if self._process.returncode != 0 and self._process.stderr:
+                        try:
+                            stderr = self._process.stderr.read().decode('utf-8', errors='ignore')
+                            if stderr.strip():
+                                logger.warning(f"Process stderr: {stderr.strip()}")
+                        except Exception:
+                            pass
+                # Small delay to ensure framebuffer is released
+                time.sleep(0.1)
                 return
             time.sleep(0.2)
 
