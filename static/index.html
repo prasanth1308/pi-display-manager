@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pi Display Manager</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1>🖼️ Pi Display Manager</h1>
+        <div class="status-bar">
+          <div class="status-item">
+            <span class="label">Status:</span>
+            <span id="status" class="badge">Stopped</span>
+          </div>
+          <div class="status-item">
+            <span class="label">Active Playlist:</span>
+            <span id="active-playlist">None</span>
+          </div>
+          <div class="status-item">
+            <span class="label">Images:</span>
+            <span id="image-count">0</span>
+          </div>
+        </div>
+      </header>
+
+      <main>
+        <!-- Control Panel -->
+        <section class="control-panel">
+          <h2>Slideshow Controls</h2>
+          <div class="controls">
+            <button id="play-btn" class="btn btn-primary btn-large" disabled>
+              ▶️ Play Slideshow
+            </button>
+            <button id="stop-btn" class="btn btn-danger btn-large" disabled>
+              ⏹️ Stop Slideshow
+            </button>
+          </div>
+          <p class="help-text">Select a playlist below to enable playback</p>
+        </section>
+
+        <!-- Playlists Section -->
+        <section class="playlists-section">
+          <div class="section-header">
+            <h2>Playlists</h2>
+            <button id="new-playlist-btn" class="btn btn-success">
+              + New Playlist
+            </button>
+          </div>
+
+          <div id="playlists-container" class="playlists-grid">
+            <!-- Playlists will be loaded here -->
+          </div>
+        </section>
+
+        <!-- Images Section -->
+        <section
+          class="images-section"
+          id="images-section"
+          style="display: none"
+        >
+          <div class="section-header">
+            <h2>Content in <span id="selected-playlist-name"></span></h2>
+            <div>
+              <button id="upload-image-btn" class="btn btn-primary" style="display: none">
+                📤 Upload Images
+              </button>
+              <button id="download-video-trigger-btn" class="btn btn-primary" style="display: none">
+                📥 Download Video
+              </button>
+              <button id="close-images-btn" class="btn btn-secondary">
+                Close
+              </button>
+            </div>
+          </div>
+
+          <div id="images-container" class="images-grid">
+            <!-- Images/Videos will be loaded here -->
+          </div>
+
+          <input
+            type="file"
+            id="file-input"
+            accept="image/*"
+            multiple
+            style="display: none"
+          />
+        </section>
+      </main>
+
+      <!-- Modal for New Playlist -->
+      <div id="playlist-modal" class="modal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3>Create New Playlist</h3>
+            <span class="close">&times;</span>
+          </div>
+          <div class="modal-body">
+            <label for="playlist-name">Playlist Name:</label>
+            <input
+              type="text"
+              id="playlist-name"
+              placeholder="Enter playlist name"
+              class="input-field"
+            />
+              
+              <label for="playlist-type">Playlist Type:</label>
+              <select id="playlist-type" class="input-field">
+                <option value="image">Image Playlist</option>
+                <option value="video">Video Playlist (YouTube)</option>
+              </select>
+            </div>
+            <div class="modal-footer">
+              <button id="cancel-playlist-btn" class="btn btn-secondary">
+                Cancel
+              </button>
+              <button id="create-playlist-btn" class="btn btn-success">
+                Create
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Modal for Video Download -->
+        <div id="video-modal" class="modal">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h3>Download Video from YouTube</h3>
+              <span class="close-video">&times;</span>
+            </div>
+            <div class="modal-body">
+              <label for="video-url">YouTube URL:</label>
+              <input
+                type="text"
+                id="video-url"
+                placeholder="https://www.youtube.com/watch?v=..."
+                class="input-field"
+              />
+              <p class="help-text">Only YouTube URLs are supported. Video will be downloaded in 720p quality.</p>
+              <div id="download-status" style="display: none;" class="download-status">
+                <div class="status-message"></div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button id="cancel-video-btn" class="btn btn-secondary">
+                Cancel
+              </button>
+              <button id="download-video-btn" class="btn btn-primary">
+                Download
+      <p>Pi Display Manager v2.0 | Raspberry Pi Slideshow Manager</p>
+    </footer>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
