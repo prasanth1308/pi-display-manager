@@ -57,7 +57,7 @@ echo "==> Setting up systemd service for auto-start on boot…"
 
 SERVICE_FILE="/tmp/pi-display.service"
 
-sed -e "s|__USER__|$CURRENT_USER|g" \
+sed -e "s|__USER__|root|g" \
     -e "s|__PROJECT_DIR__|$PROJECT_DIR|g" \
     "$PROJECT_DIR/scripts/pi-display.service" > "$SERVICE_FILE"
 
@@ -68,6 +68,7 @@ rm "$SERVICE_FILE"
 # Reload systemd and enable service
 sudo systemctl daemon-reload
 sudo systemctl enable pi-display.service
+sudo chmod 666 /dev/fb0
 
 echo ""
 echo "============================================================"

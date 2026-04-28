@@ -15,6 +15,7 @@ import platform
 import subprocess
 import threading
 import time
+from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -59,13 +60,18 @@ def _build_cmd(paths: list[str], file_type: str, duration: float = 10.0) -> list
     if IS_LINUX:
         if file_type == "image":
             # fbi: framebuffer image viewer — no X11 required
-            # -d /dev/fb0 : explicitly use framebuffer device (required for service)
-            # -a    : auto-scale to screen
-            # -t <sec> : display each image for <sec> seconds
-            # -noverbose : suppress status output
-            # -1 : show once (loop through all images once then exit)
-            # Multiple paths create a slideshow
-            return ["fbi", "-d", "/dev/fb0", "-a", "-t", str(int(duration)), "-noverbose"] + paths
+            delay = int(duration)
+            framebuffer = "/dev/fb0"
+            images = paths
+            cmd = [
+                "fbi",
+                "-t", str(delay),         # Time delay between images
+                "-a",                      # Auto-advance
+                "--noverbose",             # Suppress console output (prevents flashing)
+                "-d", framebuffer,         # Specify framebuffer device
+                "-T", "1",                 # Use VT 1 (even though switching is disabled)
+            ] + images
+            return cmd
         else:
             # cvlc: VLC without GUI (single video at a time)
             # --vout fb : framebuffer output (no X11)
@@ -269,12 +275,18 @@ class DisplayPlayer:
         logger.debug(f"fbi command: {' '.join(cmd)}")
         
         try:
-            self._process = subprocess.Popen(
-                cmd,
-                env={**os.environ},
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-            )
+            # Open log file for fbi stderr
+            fbi_log = Path(__file__).parent / "fbi_error.log"
+            with open(fbi_log, "a") as f:
+                f.write(f"\n=== Starting fbi at {__import__('datetime').datetime.now()} ===\n")
+
+            with open(fbi_log, "a") as f:
+                self._process = subprocess.Popen(
+                    cmd,
+                    stdin=subprocess.DEVNULL,
+                    stdout=f,
+                    stderr=f
+                )
             logger.debug(f"fbi process started with PID {self._process.pid}")
         except FileNotFoundError:
             logger.warning("Command not found: %s — skipping (dev mode?)", cmd[0])
