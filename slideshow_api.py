@@ -602,7 +602,7 @@ def is_youtube_url(url):
 
 
 def download_youtube_video(playlist_id, video_url, download_id):
-    """Download video from YouTube using yt-dlp"""
+    """Download video from YouTube using yt-dlp with progress tracking"""
     global download_status
     
     if playlist_id not in playlists_db["playlists"]:
@@ -620,24 +620,71 @@ def download_youtube_video(playlist_id, video_url, download_id):
     playlist_dir = VIDEOS_DIR / playlist_id
     
     try:
-        download_status[download_id] = {"status": "downloading", "progress": 0}
+        download_status[download_id] = {"status": "downloading", "progress": 0, "title": ""}
         logger.info("Starting download from: %s", video_url)
         
-        # Use yt-dlp to download video in 720p MP4 format
+        # Use yt-dlp to download video in 720p MP4 format with progress
         output_template = str(playlist_dir / "%(title)s.%(ext)s")
         
-        result = subprocess.run(
+        # Start the download process with real-time output
+        process = subprocess.Popen(
             [
                 "yt-dlp",
                 "-f", "best[height<=720][ext=mp4]/best[height<=720]/best",
                 "--merge-output-format", "mp4",
+                "--newline",  # Force newline for each progress line
+                "--no-colors",  # Remove color codes
                 "-o", output_template,
                 video_url
             ],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
-            timeout=600  # 10 minute timeout
+            bufsize=1
         )
+        
+        # Read output line by line and parse progress
+        import re
+        video_title = "Video"
+        
+        for line in process.stdout:
+            line = line.strip()
+            
+            # Extract video title
+            if "[download] Destination:" in line:
+                try:
+                    # Extract filename from path
+                    match = re.search(r'Destination: (.+?)\.(mp4|mkv|webm)', line)
+                    if match:
+                        path = Path(match.group(1))
+                        video_title = path.name
+                        download_status[download_id]["title"] = video_title
+                except:
+                    pass
+            
+            # Parse download progress: [download]  45.2% of 123.45MiB at 1.23MiB/s ETA 00:34
+            if "[download]" in line and "%" in line:
+                try:
+                    # Extract percentage
+                    match = re.search(r'(\d+\.?\d*)%', line)
+                    if match:
+                        progress = float(match.group(1))
+                        download_status[download_id]["progress"] = progress
+                        
+                        # Extract speed and ETA if available
+                        speed_match = re.search(r'at\s+([\d.]+\w+/s)', line)
+                        eta_match = re.search(r'ETA\s+(\d+:\d+)', line)
+                        
+                        if speed_match:
+                            download_status[download_id]["speed"] = speed_match.group(1)
+                        if eta_match:
+                            download_status[download_id]["eta"] = eta_match.group(1)
+                except Exception as e:
+                    logger.warning("Error parsing progress: %s", e)
+        
+        # Wait for process to complete
+        return_code = process.wait(timeout=600)
+        result = type('obj', (object,), {'returncode': return_code, 'stderr': ''})
         
         if result.returncode == 0:
             # Find the downloaded file
@@ -648,6 +695,7 @@ def download_youtube_video(playlist_id, video_url, download_id):
                 
                 download_status[download_id] = {
                     "status": "completed",
+                    "progress": 100,
                     "filename": video_file.name,
                     "duration": duration,
                     "message": "Download completed"
@@ -662,13 +710,16 @@ def download_youtube_video(playlist_id, video_url, download_id):
             else:
                 download_status[download_id] = {"status": "error", "message": "Download completed but file not found"}
         else:
-            error_msg = result.stderr[:200] if result.stderr else "Unknown error"
-            download_status[download_id] = {"status": "error", "message": f"Download failed: {error_msg}"}
-            logger.error("Download failed: %s", error_msg)
+            download_status[download_id] = {"status": "error", "message": "Download failed"}
+            logger.error("Download failed with code: %s", result.returncode)
     
     except subprocess.TimeoutExpired:
         download_status[download_id] = {"status": "error", "message": "Download timed out"}
         logger.error("Download timed out")
+        try:
+            process.kill()
+        except:
+            pass
     except Exception as e:
         download_status[download_id] = {"status": "error", "message": str(e)}
         logger.error("Download error: %s", e)

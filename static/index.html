@@ -64,10 +64,18 @@
           <div class="section-header">
             <h2>Content in <span id="selected-playlist-name"></span></h2>
             <div>
-              <button id="upload-image-btn" class="btn btn-primary" style="display: none">
+              <button
+                id="upload-image-btn"
+                class="btn btn-primary"
+                style="display: none"
+              >
                 📤 Upload Images
               </button>
-              <button id="download-video-trigger-btn" class="btn btn-primary" style="display: none">
+              <button
+                id="download-video-trigger-btn"
+                class="btn btn-primary"
+                style="display: none"
+              >
                 📥 Download Video
               </button>
               <button id="close-images-btn" class="btn btn-secondary">
@@ -105,50 +113,76 @@
               placeholder="Enter playlist name"
               class="input-field"
             />
-              
-              <label for="playlist-type">Playlist Type:</label>
-              <select id="playlist-type" class="input-field">
-                <option value="image">Image Playlist</option>
-                <option value="video">Video Playlist (YouTube)</option>
-              </select>
-            </div>
-            <div class="modal-footer">
-              <button id="cancel-playlist-btn" class="btn btn-secondary">
-                Cancel
-              </button>
-              <button id="create-playlist-btn" class="btn btn-success">
-                Create
-              </button>
-            </div>
+
+            <label for="playlist-type">Playlist Type:</label>
+            <select id="playlist-type" class="input-field">
+              <option value="image">Image Playlist</option>
+              <option value="video">Video Playlist (YouTube)</option>
+            </select>
+          </div>
+          <div class="modal-footer">
+            <button id="cancel-playlist-btn" class="btn btn-secondary">
+              Cancel
+            </button>
+            <button id="create-playlist-btn" class="btn btn-success">
+              Create
+            </button>
           </div>
         </div>
+      </div>
 
-        <!-- Modal for Video Download -->
-        <div id="video-modal" class="modal">
-          <div class="modal-content">
-            <div class="modal-header">
-              <h3>Download Video from YouTube</h3>
-              <span class="close-video">&times;</span>
-            </div>
-            <div class="modal-body">
-              <label for="video-url">YouTube URL:</label>
-              <input
-                type="text"
-                id="video-url"
-                placeholder="https://www.youtube.com/watch?v=..."
-                class="input-field"
-              />
-              <p class="help-text">Only YouTube URLs are supported. Video will be downloaded in 720p quality.</p>
-              <div id="download-status" style="display: none;" class="download-status">
-                <div class="status-message"></div>
+      <!-- Modal for Video Download -->
+      <div id="video-modal" class="modal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3>Download Video from YouTube</h3>
+            <span class="close-video">&times;</span>
+          </div>
+          <div class="modal-body">
+            <label for="video-url">YouTube URL:</label>
+            <input
+              type="text"
+              id="video-url"
+              placeholder="https://www.youtube.com/watch?v=..."
+              class="input-field"
+            />
+            <p class="help-text">
+              Only YouTube URLs are supported. Video will be downloaded in 720p
+              quality.
+            </p>
+            <div
+              id="download-status"
+              style="display: none"
+              class="download-status"
+            >
+              <div class="status-message"></div>
+              <div class="progress-container">
+                <div class="progress-bar" id="download-progress-bar"></div>
               </div>
+              <div class="progress-details" id="progress-details"></div>
             </div>
-            <div class="modal-footer">
-              <button id="cancel-video-btn" class="btn btn-secondary">
-                Cancel
-              </button>
-              <button id="download-video-btn" class="btn btn-primary">
-                Download
+          </div>
+          <div class="modal-footer">
+            <button id="cancel-video-btn" class="btn btn-secondary">
+              Cancel
+            </button>
+            <button id="download-video-btn" class="btn btn-primary">
+              Download
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="loading-overlay" style="display: none">
+      <div class="spinner"></div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container"></div>
+
+    <footer>
       <p>Pi Display Manager v2.0 | Raspberry Pi Slideshow Manager</p>
     </footer>
 

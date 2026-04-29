@@ -34,25 +34,16 @@ else
     echo "Python3 already installed: $(python3 --version)"
 fi
 
-if ! command -v pip3 &> /dev/null; then
-    echo "Installing pip3..."
-    sudo apt-get install -y python3-pip
+# Install python3-venv and python3-full if not available
+if ! dpkg -l | grep -q python3-venv; then
+    echo "Installing python3-venv..."
+    sudo apt-get install -y python3-venv python3-full
 else
-    echo "pip3 already installed: $(pip3 --version)"
+    echo "python3-venv already installed"
 fi
 
-# Install Python packages
-echo "[5/7] Installing Python packages (yt-dlp)..."
-if [ -f "$SCRIPT_DIR/requirements.txt" ]; then
-    pip3 install --upgrade -r "$SCRIPT_DIR/requirements.txt"
-    echo "Python packages installed"
-else
-    echo "Installing yt-dlp directly..."
-    pip3 install --upgrade yt-dlp
-fi
-
-# Set up directory structure
-echo "[6/7] Setting up directory structure..."
+# Set up directory structure (moved before venv creation)
+echo "[5/7] Setting up directory structure..."
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Create data directories
@@ -66,6 +57,27 @@ echo "  - $SCRIPT_DIR/data/playlists/default"
 echo "  - $SCRIPT_DIR/data/videos"
 echo "  - $SCRIPT_DIR/data/uploads"
 echo "  - $SCRIPT_DIR/static"
+
+# Create virtual environment
+echo "[6/7] Creating Python virtual environment..."
+if [ ! -d "$SCRIPT_DIR/venv" ]; then
+    python3 -m venv "$SCRIPT_DIR/venv"
+    echo "Virtual environment created at $SCRIPT_DIR/venv"
+else
+    echo "Virtual environment already exists"
+fi
+
+# Install Python packages in virtual environment
+echo "Installing Python packages (yt-dlp)..."
+if [ -f "$SCRIPT_DIR/requirements.txt" ]; then
+    "$SCRIPT_DIR/venv/bin/pip" install --upgrade pip
+    "$SCRIPT_DIR/venv/bin/pip" install --upgrade -r "$SCRIPT_DIR/requirements.txt"
+    echo "Python packages installed in virtual environment"
+else
+    echo "Installing yt-dlp directly..."
+    "$SCRIPT_DIR/venv/bin/pip" install --upgrade pip
+    "$SCRIPT_DIR/venv/bin/pip" install --upgrade yt-dlp
+fi
 
 # Make scripts executable
 chmod +x "$SCRIPT_DIR/slideshow_api.py"
@@ -81,7 +93,7 @@ if [ -f "$SCRIPT_DIR/pi-slideshow.service" ]; then
 
     # Update service file with correct paths (service runs as root for framebuffer access)
     sudo sed -i "s|WorkingDirectory=/home/larokiaraj/pi-display-manager|WorkingDirectory=$INSTALL_PATH|g" /etc/systemd/system/pi-slideshow.service
-    sudo sed -i "s|ExecStart=/usr/bin/python3 /home/larokiaraj/pi-display-manager/slideshow_api.py|ExecStart=/usr/bin/python3 $INSTALL_PATH/slideshow_api.py|g" /etc/systemd/system/pi-slideshow.service
+    sudo sed -i "s|ExecStart=/usr/bin/python3 /home/larokiaraj/pi-display-manager/slideshow_api.py|ExecStart=$INSTALL_PATH/venv/bin/python3 $INSTALL_PATH/slideshow_api.py|g" /etc/systemd/system/pi-slideshow.service
 
     # Reload systemd daemon
     sudo systemctl daemon-reload

@@ -499,6 +499,20 @@ function hideVideoModal() {
     clearInterval(downloadPollingInterval);
     downloadPollingInterval = null;
   }
+
+  // Reset progress bar and status
+  videoUrlInput.value = "";
+  downloadStatusDiv.style.display = "none";
+  const progressBar = document.getElementById("download-progress-bar");
+  const progressDetails = document.getElementById("progress-details");
+  if (progressBar) {
+    progressBar.style.width = "0%";
+    progressBar.setAttribute("data-progress", "0%");
+  }
+  if (progressDetails) {
+    progressDetails.textContent = "";
+  }
+  downloadVideoBtn.disabled = false;
 }
 
 async function startVideoDownload() {
@@ -557,11 +571,28 @@ async function pollDownloadStatus(downloadId) {
   }
 
   const statusMsg = downloadStatusDiv.querySelector(".status-message");
+  const progressBar = document.getElementById("download-progress-bar");
+  const progressDetails = document.getElementById("progress-details");
 
   if (data.status === "downloading") {
-    statusMsg.textContent = `Downloading: ${data.progress || "0%"}`;
-  } else if (data.status === "complete") {
+    const progress = data.progress || 0;
+    const title = data.title || "Video";
+
+    statusMsg.textContent = `Downloading: ${title}`;
+    progressBar.style.width = `${progress}%`;
+    progressBar.setAttribute("data-progress", `${progress.toFixed(1)}%`);
+
+    // Show speed and ETA if available
+    let details = [];
+    if (data.speed) details.push(`Speed: ${data.speed}`);
+    if (data.eta) details.push(`ETA: ${data.eta}`);
+    progressDetails.textContent = details.join(" | ");
+  } else if (data.status === "completed") {
     statusMsg.textContent = "Download complete!";
+    progressBar.style.width = "100%";
+    progressBar.setAttribute("data-progress", "100%");
+    progressDetails.textContent = "";
+
     showToast("Video downloaded successfully", "success");
     downloadVideoBtn.disabled = false;
 
@@ -578,6 +609,9 @@ async function pollDownloadStatus(downloadId) {
     }, 1500);
   } else if (data.status === "error") {
     statusMsg.textContent = `Error: ${data.message || "Download failed"}`;
+    progressBar.style.width = "0%";
+    progressDetails.textContent = "";
+
     showToast("Download failed", "error");
     downloadVideoBtn.disabled = false;
 
