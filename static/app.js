@@ -349,6 +349,19 @@ function closeImagesView() {
     downloadPollingInterval = null;
   }
 
+  // Hide and reset progress bar
+  const playlistDownloadStatus = document.getElementById(
+    "playlist-download-status",
+  );
+  if (playlistDownloadStatus) {
+    playlistDownloadStatus.style.display = "none";
+    const progressBar = document.getElementById("playlist-progress-bar");
+    if (progressBar) {
+      progressBar.style.width = "0%";
+      progressBar.setAttribute("data-progress", "0%");
+    }
+  }
+
   // Remove outlines from playlist cards
   document.querySelectorAll(".playlist-card").forEach((card) => {
     card.style.outline = "none";
@@ -495,12 +508,8 @@ function showVideoModal() {
 
 function hideVideoModal() {
   videoModal.classList.remove("show");
-  if (downloadPollingInterval) {
-    clearInterval(downloadPollingInterval);
-    downloadPollingInterval = null;
-  }
 
-  // Reset progress bar and status
+  // Reset modal content
   videoUrlInput.value = "";
   downloadStatusDiv.style.display = "none";
   const progressBar = document.getElementById("download-progress-bar");
@@ -512,7 +521,6 @@ function hideVideoModal() {
   if (progressDetails) {
     progressDetails.textContent = "";
   }
-  downloadVideoBtn.disabled = false;
 }
 
 async function startVideoDownload() {
@@ -533,21 +541,26 @@ async function startVideoDownload() {
     return;
   }
 
-  // Show download status
-  downloadStatusDiv.style.display = "block";
-  downloadStatusDiv.querySelector(".status-message").textContent =
-    "Starting download...";
-  downloadVideoBtn.disabled = true;
-
   const data = await apiCall(`/playlists/${selectedPlaylistId}/download`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ url }),
   });
 
-  if (data && data.status === "success") {
+  if (data && data.status === "started") {
     const downloadId = data.download_id;
     showToast("Download started", "info");
+
+    // Close the modal
+    hideVideoModal();
+
+    // Show progress in playlist content section
+    const playlistDownloadStatus = document.getElementById(
+      "playlist-download-status",
+    );
+    playlistDownloadStatus.style.display = "block";
+    playlistDownloadStatus.querySelector(".status-message").textContent =
+      "Starting download...";
 
     // Start polling for download status
     downloadPollingInterval = setInterval(
@@ -556,8 +569,6 @@ async function startVideoDownload() {
     );
   } else {
     showToast(data?.message || "Failed to start download", "error");
-    downloadStatusDiv.style.display = "none";
-    downloadVideoBtn.disabled = false;
   }
 }
 
@@ -570,9 +581,12 @@ async function pollDownloadStatus(downloadId) {
     return;
   }
 
-  const statusMsg = downloadStatusDiv.querySelector(".status-message");
-  const progressBar = document.getElementById("download-progress-bar");
-  const progressDetails = document.getElementById("progress-details");
+  const playlistDownloadStatus = document.getElementById(
+    "playlist-download-status",
+  );
+  const statusMsg = playlistDownloadStatus.querySelector(".status-message");
+  const progressBar = document.getElementById("playlist-progress-bar");
+  const progressDetails = document.getElementById("playlist-progress-details");
 
   if (data.status === "downloading") {
     const progress = data.progress || 0;
@@ -594,7 +608,6 @@ async function pollDownloadStatus(downloadId) {
     progressDetails.textContent = "";
 
     showToast("Video downloaded successfully", "success");
-    downloadVideoBtn.disabled = false;
 
     clearInterval(downloadPollingInterval);
     downloadPollingInterval = null;
@@ -603,20 +616,26 @@ async function pollDownloadStatus(downloadId) {
     loadPlaylistVideos(selectedPlaylistId);
     loadPlaylists();
 
-    // Close modal after a delay
+    // Hide progress after a delay
     setTimeout(() => {
-      hideVideoModal();
-    }, 1500);
+      playlistDownloadStatus.style.display = "none";
+      progressBar.style.width = "0%";
+      progressBar.setAttribute("data-progress", "0%");
+    }, 3000);
   } else if (data.status === "error") {
     statusMsg.textContent = `Error: ${data.message || "Download failed"}`;
     progressBar.style.width = "0%";
     progressDetails.textContent = "";
 
     showToast("Download failed", "error");
-    downloadVideoBtn.disabled = false;
 
     clearInterval(downloadPollingInterval);
     downloadPollingInterval = null;
+
+    // Hide progress after a delay
+    setTimeout(() => {
+      playlistDownloadStatus.style.display = "none";
+    }, 3000);
   }
 }
 

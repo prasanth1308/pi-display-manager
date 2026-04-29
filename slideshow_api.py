@@ -12,6 +12,7 @@ import sys
 import logging
 import shutil
 import uuid
+import yt_dlp
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
@@ -57,10 +58,6 @@ def ensure_directories():
     UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
     STATIC_DIR.mkdir(parents=True, exist_ok=True)
     
-    # Create default playlist if it doesn't exist
-    default_playlist_dir = PLAYLISTS_DIR / "default"
-    default_playlist_dir.mkdir(exist_ok=True)
-    
     logger.info("Directory structure ensured")
 
 
@@ -93,14 +90,7 @@ def load_playlists_db():
                 playlists_db = json.load(f)
         else:
             playlists_db = {
-                "playlists": {
-                    "default": {
-                        "name": "Default Playlist",
-                        "id": "default",
-                        "created": "2024-01-01T00:00:00",
-                        "image_count": 0
-                    }
-                },
+                "playlists": {},
                 "active_playlist": None
             }
             save_playlists_db()
@@ -164,7 +154,7 @@ def start_slideshow(playlist_id=None):
         playlist_id = playlists_db.get("active_playlist")
     
     if playlist_id is None:
-        playlist_id = "default"
+        return {"status": "error", "message": "No playlist selected"}
     
     if playlist_id not in playlists_db["playlists"]:
         return {"status": "error", "message": f"Playlist '{playlist_id}' not found"}
@@ -271,7 +261,7 @@ def get_status():
         image_count = len(get_playlist_images(active_playlist_id))
     
     return {
-        "running": slideshow_process is not None,
+        "running": slideshow_process is not None or video_process is not None,
         "current_playlist": current_playlist,
         "active_playlist": active_playlist_id,
         "image_count": image_count,
@@ -310,9 +300,6 @@ def create_playlist(name, playlist_type="image"):
 
 def delete_playlist(playlist_id):
     """Delete a playlist"""
-    if playlist_id == "default":
-        return {"status": "error", "message": "Cannot delete default playlist"}
-    
     if playlist_id not in playlists_db["playlists"]:
         return {"status": "error", "message": "Playlist not found"}
     
@@ -602,7 +589,7 @@ def is_youtube_url(url):
 
 
 def download_youtube_video(playlist_id, video_url, download_id):
-    """Download video from YouTube using yt-dlp with progress tracking"""
+    """Download video from YouTube using yt-dlp library with progress tracking"""
     global download_status
     
     if playlist_id not in playlists_db["playlists"]:
@@ -619,109 +606,91 @@ def download_youtube_video(playlist_id, video_url, download_id):
     
     playlist_dir = VIDEOS_DIR / playlist_id
     
+    def progress_hook(d):
+        """Hook to track download progress"""
+        if d['status'] == 'downloading':
+            # Extract progress information
+            total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
+            downloaded = d.get('downloaded_bytes', 0)
+            
+            if total > 0:
+                progress = (downloaded / total) * 100
+                download_status[download_id]["progress"] = progress
+            
+            # Add speed and ETA
+            speed = d.get('speed')
+            eta = d.get('eta')
+            
+            if speed:
+                speed_mb = speed / (1024 * 1024)
+                download_status[download_id]["speed"] = f"{speed_mb:.2f}MiB/s"
+            
+            if eta:
+                minutes, seconds = divmod(eta, 60)
+                download_status[download_id]["eta"] = f"{int(minutes):02d}:{int(seconds):02d}"
+        
+        elif d['status'] == 'finished':
+            download_status[download_id]["progress"] = 100
+    
     try:
         download_status[download_id] = {"status": "downloading", "progress": 0, "title": ""}
         logger.info("Starting download from: %s", video_url)
         
-        # Use yt-dlp to download video in 720p MP4 format with progress
+        # Generate unique video ID for filename (no spaces)
+        video_id = str(uuid.uuid4())[:12]
+        
+        # Use yt-dlp library to download video in 720p MP4 format
+        # Download with original title first, then rename
         output_template = str(playlist_dir / "%(title)s.%(ext)s")
         
-        # Start the download process with real-time output
-        process = subprocess.Popen(
-            [
-                "yt-dlp",
-                "-f", "best[height<=720][ext=mp4]/best[height<=720]/best",
-                "--merge-output-format", "mp4",
-                "--newline",  # Force newline for each progress line
-                "--no-colors",  # Remove color codes
-                "-o", output_template,
-                video_url
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1
-        )
+        ydl_opts = {
+            'format': 'bestvideo[height<=720]+bestaudio/best[height<=720]',
+            'outtmpl': output_template,
+            'merge_output_format': 'mp4',
+            'quiet': False,
+            'no_warnings': False,
+            'progress_hooks': [progress_hook],
+        }
         
-        # Read output line by line and parse progress
-        import re
-        video_title = "Video"
+        # Download the video
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(video_url, download=True)
+            video_title = info.get('title', 'Unknown')
+            download_status[download_id]["title"] = video_title
         
-        for line in process.stdout:
-            line = line.strip()
+        # Find the downloaded file (most recently created)
+        videos = [f for f in playlist_dir.iterdir() if f.suffix.lower() in {'.mp4', '.mkv', '.avi', '.webm'}]
+        if videos:
+            video_file = max(videos, key=lambda f: f.stat().st_mtime)
             
-            # Extract video title
-            if "[download] Destination:" in line:
-                try:
-                    # Extract filename from path
-                    match = re.search(r'Destination: (.+?)\.(mp4|mkv|webm)', line)
-                    if match:
-                        path = Path(match.group(1))
-                        video_title = path.name
-                        download_status[download_id]["title"] = video_title
-                except:
-                    pass
+            # Rename to custom ID (no spaces)
+            new_filename = f"{video_id}.mp4"
+            new_path = playlist_dir / new_filename
+            video_file.rename(new_path)
             
-            # Parse download progress: [download]  45.2% of 123.45MiB at 1.23MiB/s ETA 00:34
-            if "[download]" in line and "%" in line:
-                try:
-                    # Extract percentage
-                    match = re.search(r'(\d+\.?\d*)%', line)
-                    if match:
-                        progress = float(match.group(1))
-                        download_status[download_id]["progress"] = progress
-                        
-                        # Extract speed and ETA if available
-                        speed_match = re.search(r'at\s+([\d.]+\w+/s)', line)
-                        eta_match = re.search(r'ETA\s+(\d+:\d+)', line)
-                        
-                        if speed_match:
-                            download_status[download_id]["speed"] = speed_match.group(1)
-                        if eta_match:
-                            download_status[download_id]["eta"] = eta_match.group(1)
-                except Exception as e:
-                    logger.warning("Error parsing progress: %s", e)
-        
-        # Wait for process to complete
-        return_code = process.wait(timeout=600)
-        result = type('obj', (object,), {'returncode': return_code, 'stderr': ''})
-        
-        if result.returncode == 0:
-            # Find the downloaded file
-            videos = [f for f in playlist_dir.iterdir() if f.suffix.lower() in {'.mp4', '.mkv', '.avi', '.webm'}]
-            if videos:
-                video_file = max(videos, key=lambda f: f.stat().st_mtime)
-                duration = get_video_duration(video_file)
-                
-                download_status[download_id] = {
-                    "status": "completed",
-                    "progress": 100,
-                    "filename": video_file.name,
-                    "duration": duration,
-                    "message": "Download completed"
-                }
-                
-                # Update playlist video count
-                playlist_videos = get_playlist_videos(playlist_id)
-                playlists_db["playlists"][playlist_id]["video_count"] = len(playlist_videos)
-                save_playlists_db()
-                
-                logger.info("Download completed: %s", video_file.name)
-            else:
-                download_status[download_id] = {"status": "error", "message": "Download completed but file not found"}
+            duration = get_video_duration(new_path)
+            
+            download_status[download_id] = {
+                "status": "completed",
+                "progress": 100,
+                "filename": new_filename,
+                "duration": duration,
+                "title": video_title,
+                "message": "Download completed"
+            }
+            
+            # Update playlist video count
+            playlist_videos = get_playlist_videos(playlist_id)
+            playlists_db["playlists"][playlist_id]["video_count"] = len(playlist_videos)
+            save_playlists_db()
+            
+            logger.info("Download completed: %s (renamed to %s)", video_title, new_filename)
         else:
-            download_status[download_id] = {"status": "error", "message": "Download failed"}
-            logger.error("Download failed with code: %s", result.returncode)
+            download_status[download_id] = {"status": "error", "message": "Download completed but file not found"}
     
-    except subprocess.TimeoutExpired:
-        download_status[download_id] = {"status": "error", "message": "Download timed out"}
-        logger.error("Download timed out")
-        try:
-            process.kill()
-        except:
-            pass
     except Exception as e:
-        download_status[download_id] = {"status": "error", "message": str(e)}
+        error_msg = str(e)
+        download_status[download_id] = {"status": "error", "message": error_msg}
         logger.error("Download error: %s", e)
 
 
@@ -758,17 +727,34 @@ def start_video_playback(playlist_id):
     try:
         video_path = videos[0]
         
-        # VLC command for fullscreen looped playback on framebuffer
-        cmd = [
-            "cvlc",  # Console VLC
-            "--fullscreen",
-            "--loop",
-            "--no-video-title-show",
-            "--no-audio",  # Disable audio for Pi display
-            video_path
-        ]
+        # Determine which user to run VLC as
+        # If running as root, run as larokiaraj user using sudo
+        current_user = os.getenv('USER', os.getenv('LOGNAME', 'root'))
+        
+        if current_user == 'root' or os.geteuid() == 0:
+            # Run as larokiaraj user using sudo
+            cmd = [
+                "sudo", "-u", "larokiaraj",
+                "cvlc",
+                "--fullscreen",
+                "--loop",
+                "--no-video-title-show",
+                "--no-audio",
+                video_path
+            ]
+        else:
+            # Not root, run VLC normally
+            cmd = [
+                "cvlc",
+                "--fullscreen",
+                "--loop",
+                "--no-video-title-show",
+                "--no-audio",
+                video_path
+            ]
         
         logger.info("Starting video playback: %s", Path(video_path).name)
+        logger.info("VLC command: %s", ' '.join(cmd))
         
         vlc_log = BASE_DIR / "vlc_error.log"
         with open(vlc_log, "a") as f:
@@ -875,7 +861,7 @@ class APIHandler(BaseHTTPRequestHandler):
             response = get_playlist_videos_list(playlist_id)
         elif path.startswith("/api/download/"):
             # Get download status
-            download_id = path.split("/")[2]
+            download_id = path.split("/")[3]
             if download_id in download_status:
                 response = download_status[download_id]
             else:
@@ -892,10 +878,28 @@ class APIHandler(BaseHTTPRequestHandler):
                 response = start_slideshow(playlist_id)
         elif path == "/api/stop":
             # Stop both image and video playback
+            video_stopped = False
+            slideshow_stopped = False
+            
             if video_process is not None:
                 response = stop_video_playback()
-            else:
+                video_stopped = True
+            
+            if slideshow_process is not None:
                 response = stop_slideshow()
+                slideshow_stopped = True
+            
+            if not video_stopped and not slideshow_stopped:
+                # Nothing was running, but clean up anyway
+                response = stop_slideshow()  # This will clean up framebuffer
+            
+            if video_stopped or slideshow_stopped:
+                response = {
+                    "status": "stopped",
+                    "message": "Playback stopped",
+                    "video_stopped": video_stopped,
+                    "slideshow_stopped": slideshow_stopped
+                }
         elif path == "/api/clear":
             clear_framebuffer()
             response = {"status": "success", "message": "Framebuffer cleared"}
