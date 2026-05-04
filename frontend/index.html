@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Pi Display Manager</title>
-    <link rel="stylesheet" href="/static/style.css" />
+    <link rel="stylesheet" href="/frontend/style.css" />
   </head>
   <body>
     <div class="container">
@@ -199,6 +199,23 @@
       <p>Pi Display Manager v2.0 | Raspberry Pi Slideshow Manager</p>
     </footer>
 
-    <script src="/static/app.js"></script>
+    <!-- Core modules -->
+    <script src="/frontend/scripts/config.js"></script>
+    <script src="/frontend/scripts/dom.js"></script>
+    <script src="/frontend/scripts/state.js"></script>
+    <script src="/frontend/scripts/ui.js"></script>
+    <script src="/frontend/scripts/api.js"></script>
+
+    <!-- Manager modules -->
+    <script src="/frontend/scripts/managers/status.js"></script>
+    <script src="/frontend/scripts/managers/content.js"></script>
+    <script src="/frontend/scripts/managers/playlist.js"></script>
+    <script src="/frontend/scripts/managers/image.js"></script>
+    <script src="/frontend/scripts/managers/video.js"></script>
+    <script src="/frontend/scripts/managers/playback.js"></script>
+
+    <!-- Event handlers and initialization -->
+    <script src="/frontend/scripts/events.js"></script>
+    <script src="/frontend/scripts/app.js"></script>
   </body>
 </html>

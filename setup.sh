@@ -50,13 +50,13 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 mkdir -p "$SCRIPT_DIR/data/playlists/default"
 mkdir -p "$SCRIPT_DIR/data/videos"
 mkdir -p "$SCRIPT_DIR/data/uploads"
-mkdir -p "$SCRIPT_DIR/static"
+mkdir -p "$SCRIPT_DIR/frontend"
 
 echo "Created data directories:"
 echo "  - $SCRIPT_DIR/data/playlists/default"
 echo "  - $SCRIPT_DIR/data/videos"
 echo "  - $SCRIPT_DIR/data/uploads"
-echo "  - $SCRIPT_DIR/static"
+echo "  - $SCRIPT_DIR/frontend"
 
 # Create virtual environment
 echo "[6/7] Creating Python virtual environment..."
@@ -80,7 +80,7 @@ else
 fi
 
 # Make scripts executable
-chmod +x "$SCRIPT_DIR/slideshow_api.py"
+chmod +x "$SCRIPT_DIR/backend/slideshow_api.py"
 
 # Setup systemd service
 echo "[7/7] Setting up systemd service..."
@@ -93,7 +93,7 @@ if [ -f "$SCRIPT_DIR/pi-slideshow.service" ]; then
 
     # Update service file with correct paths (service runs as root for framebuffer access)
     sudo sed -i "s|WorkingDirectory=/home/larokiaraj/pi-display-manager|WorkingDirectory=$INSTALL_PATH|g" /etc/systemd/system/pi-slideshow.service
-    sudo sed -i "s|ExecStart=/usr/bin/python3 /home/larokiaraj/pi-display-manager/slideshow_api.py|ExecStart=$INSTALL_PATH/venv/bin/python3 $INSTALL_PATH/slideshow_api.py|g" /etc/systemd/system/pi-slideshow.service
+    sudo sed -i "s|ExecStart=/home/larokiaraj/pi-display-manager/venv/bin/python3 /home/larokiaraj/pi-display-manager/backend/slideshow_api.py|ExecStart=$INSTALL_PATH/venv/bin/python3 $INSTALL_PATH/backend/slideshow_api.py|g" /etc/systemd/system/pi-slideshow.service
 
     # Reload systemd daemon
     sudo systemctl daemon-reload

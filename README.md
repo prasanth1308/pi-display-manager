@@ -49,6 +49,7 @@ sudo ./setup.sh
 ```
 
 The setup script will:
+
 - Create necessary directories
 - Install the systemd service
 - Enable auto-start on boot
@@ -57,11 +58,13 @@ The setup script will:
 ### 4. Access Web Interface
 
 Open a web browser and navigate to:
+
 ```
 http://<raspberry-pi-ip>:8000
 ```
 
 Or if accessing locally on the Pi:
+
 ```
 http://localhost:8000
 ```
@@ -70,10 +73,12 @@ http://localhost:8000
 
 ```
 pi-display-manager/
-├── slideshow_api.py          # Main API server
-├── config.json                # Configuration file
-├── playlists.json            # Playlist database (auto-generated)
-├── static/                    # Web interface files
+├── backend/                   # Backend API (MVC Architecture)
+│   ├── slideshow_api.py      # Main entry point
+│   ├── service.py            # Service layer (business logic)
+│   ├── controller.py         # Controller layer (HTTP handling)
+│   └── slideshow_api_backup.py  # Original monolithic version
+├── frontend/                  # Web interface files
 │   ├── index.html            # Main HTML page
 │   ├── style.css             # Styles
 │   └── app.js                # Frontend JavaScript
@@ -81,13 +86,38 @@ pi-display-manager/
 │   ├── playlists/            # Playlist folders
 │   │   ├── default/          # Default playlist
 │   │   └── <playlist-id>/    # Other playlists
+│   ├── videos/               # Video playlists
 │   └── uploads/              # Temporary uploads
-├── pi-slideshow.service      # Systemd service file
+├── config.json               # Configuration file
+├── requirements.txt          # Python dependencies
 ├── setup.sh                  # Installation script
-├── slideshow_api.log         # Application log (auto-generated)
+├── pi-slideshow.service      # Systemd service file
+├── slideshow_api_old.py      # Legacy API version
+├── playlists.json            # Playlist database (auto-generated)
 ├── fbi_error.log             # FBI process log (auto-generated)
 └── README.md                 # This file
 ```
+
+### Architecture
+
+The backend follows an **MVC (Model-View-Controller)** pattern:
+
+- **`service.py`** - Service layer containing all business logic:
+  - Slideshow management (start, stop, status)
+  - Playlist CRUD operations
+  - Image and video file management
+  - YouTube video downloading
+  - Framebuffer operations
+  - Database persistence
+
+- **`controller.py`** - Controller layer handling HTTP requests:
+  - RESTful API endpoints
+  - Request routing and validation
+  - HTTP response formatting
+  - Static file serving
+  - Error handling
+
+- **`slideshow_api.py`** - Entry point that initializes and runs the application
 
 ## Configuration
 
@@ -106,6 +136,7 @@ Edit `config.json` to customize settings:
 - **framebuffer**: Framebuffer device path (default: /dev/fb0)
 
 After changing configuration, restart the service:
+
 ```bash
 sudo systemctl restart pi-slideshow
 ```
@@ -147,24 +178,29 @@ sudo systemctl restart pi-slideshow
 The backend provides a RESTful API:
 
 #### Status
+
 - `GET /api/status` - Get current status
 
 #### Playlists
+
 - `GET /api/playlists` - List all playlists
 - `POST /api/playlists/create` - Create new playlist
 - `DELETE /api/playlists/{id}` - Delete playlist
 - `GET /api/playlists/{id}/images` - List images in playlist
 
 #### Images
+
 - `POST /api/playlists/{id}/upload` - Upload image (multipart/form-data)
 - `DELETE /api/playlists/{id}/images/{filename}` - Delete image
 
 #### Controls
+
 - `GET /api/start?playlist={id}` - Start slideshow
 - `GET /api/stop` - Stop slideshow
 - `GET /api/clear` - Clear framebuffer
 
 #### Health
+
 - `GET /api/health` - Health check
 
 ### Command Line
@@ -192,6 +228,7 @@ sudo dd if=/dev/zero of=/dev/fb0 bs=1M count=10
 ## Troubleshooting
 
 ### Service won't start
+
 ```bash
 # Check logs
 sudo journalctl -u pi-slideshow -n 50
@@ -204,6 +241,7 @@ python3 slideshow_api.py
 ```
 
 ### Images not displaying
+
 ```bash
 # Check if fbi is installed
 which fbi
@@ -216,6 +254,7 @@ ls -l /dev/fb0
 ```
 
 ### Cannot access web interface
+
 ```bash
 # Check if service is running
 sudo systemctl status pi-slideshow
@@ -228,6 +267,7 @@ curl http://localhost:8000/api/health
 ```
 
 ### Images remain on screen after stop
+
 ```bash
 # Clear the framebuffer manually
 sudo dd if=/dev/zero of=/dev/fb0 bs=1M count=10
@@ -279,16 +319,19 @@ sudo reboot
 The application runs as a systemd service for automatic startup and management.
 
 ### Enable Auto-start
+
 ```bash
 sudo systemctl enable pi-slideshow
 ```
 
 ### Disable Auto-start
+
 ```bash
 sudo systemctl disable pi-slideshow
 ```
 
 ### Uninstall Service
+
 ```bash
 sudo systemctl stop pi-slideshow
 sudo systemctl disable pi-slideshow
@@ -332,6 +375,7 @@ Created for Raspberry Pi slideshow management with modern web interface.
 ## Changelog
 
 ### Version 2.0
+
 - ✨ Complete rewrite with web interface
 - 📁 Multiple playlist support
 - 📤 Image upload functionality
@@ -340,6 +384,7 @@ Created for Raspberry Pi slideshow management with modern web interface.
 - 🗑️ Playlist and image management
 
 ### Version 1.0
+
 - Basic API for slideshow control
 - Single folder support
 - Command-line configuration
