@@ -8,14 +8,34 @@ const ScheduleManager = {
 
   async load() {
     try {
-      const [schedules, playlists] = await Promise.all([
+      const [schedules, playlistsRes] = await Promise.all([
         API.getSchedules(),
         API.getPlaylists(),
       ]);
-      this._playlists = playlists || [];
-      this._render(schedules || []);
+      // getPlaylists returns { status, playlists: [...] }
+      this._playlists = playlistsRes?.playlists || [];
+      this._updateNewButton();
+      this._render(Array.isArray(schedules) ? schedules : []);
     } catch (e) {
       console.error("Failed to load schedules:", e);
+    }
+  },
+
+  _updateNewButton() {
+    const hasPlaylists = this._playlists.length > 0;
+    DOM.newScheduleBtn.disabled = !hasPlaylists;
+    let hint = document.getElementById("schedules-no-playlist-hint");
+    if (!hasPlaylists) {
+      if (!hint) {
+        hint = document.createElement("p");
+        hint.id = "schedules-no-playlist-hint";
+        hint.className = "help-text";
+        hint.style.marginTop = "8px";
+        hint.textContent = "Create a playlist first before adding schedules.";
+        DOM.newScheduleBtn.insertAdjacentElement("afterend", hint);
+      }
+    } else if (hint) {
+      hint.remove();
     }
   },
 
