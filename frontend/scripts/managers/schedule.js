@@ -1,10 +1,13 @@
 /**
  * ScheduleManager
- * Handles cron-based playlist scheduling: list, create, edit, delete, toggle.
+ * Handles playlist scheduling with a friendly time/repeat UI.
+ * Converts to/from 5-field cron internally.
  */
 
 const ScheduleManager = {
   _playlists: [],
+
+  // ── Data loading ──────────────────────────────────────────────────────────
 
   async load() {
     try {
@@ -12,7 +15,6 @@ const ScheduleManager = {
         API.getSchedules(),
         API.getPlaylists(),
       ]);
-      // getPlaylists returns { status, playlists: [...] }
       this._playlists = playlistsRes?.playlists || [];
       this._updateNewButton();
       this._render(Array.isArray(schedules) ? schedules : []);
@@ -39,10 +41,13 @@ const ScheduleManager = {
     }
   },
 
+  // ── Rendering ─────────────────────────────────────────────────────────────
+
   _render(schedules) {
     const container = DOM.schedulesContainer;
     if (!schedules.length) {
-      container.innerHTML = '<div class="empty-state">No schedules yet. Click "+ New Schedule" to add one.</div>';
+      container.innerHTML =
+        '<div class="empty-state">No schedules yet. Click "+ New Schedule" to add one.</div>';
       return;
     }
     container.innerHTML = schedules
@@ -58,7 +63,7 @@ const ScheduleManager = {
           </label>
         </div>
         <div class="schedule-info">
-          <span class="schedule-cron">${s.cron}</span>
+          <span class="schedule-desc">${this._describeSchedule(s.cron)}</span>
           <span class="schedule-playlist">${this._playlistName(s.playlist_id)}</span>
         </div>
         <div class="schedule-footer">
@@ -75,6 +80,94 @@ const ScheduleManager = {
     return p ? p.name : "Unknown playlist";
   },
 
+  // ── Cron helpers ─────────────────────────────────────────────────────────
+
+  _buildCron() {
+    const type = document.getElementById("schedule-type").value;
+    const time = DOM.scheduleTimeInput.value || "08:00";
+    const [hourStr, minStr] = time.split(":");
+    const hour = parseInt(hourStr, 10);
+    const min = parseInt(minStr, 10);
+
+    if (type === "daily") {
+      return `${min} ${hour} * * *`;
+    }
+
+    if (type === "weekly") {
+      const days = Array.from(
+        document.querySelectorAll('input[name="sched-day"]:checked'),
+      ).map((cb) => cb.value);
+      if (!days.length) return null;
+      return `${min} ${hour} * * ${days.join(",")}`;
+    }
+
+    if (type === "once") {
+      const dateStr = document.getElementById("schedule-date").value;
+      if (!dateStr) return null;
+      const d = new Date(dateStr);
+      return `${min} ${hour} ${d.getDate()} ${d.getMonth() + 1} *`;
+    }
+
+    return null;
+  },
+
+  _parseCronToUI(cron) {
+    const parts = cron.trim().split(/\s+/);
+    if (parts.length !== 5) return { type: "daily", time: "08:00", date: "", days: [] };
+
+    const [min, hour, dom, month, dow] = parts;
+    const time = `${hour.padStart(2, "0")}:${min.padStart(2, "0")}`;
+
+    if (dom !== "*" && month !== "*") {
+      // once — reconstruct date using current or next year
+      const year = new Date().getFullYear();
+      let d = new Date(year, parseInt(month, 10) - 1, parseInt(dom, 10));
+      if (d < new Date()) d = new Date(year + 1, parseInt(month, 10) - 1, parseInt(dom, 10));
+      const date = d.toISOString().split("T")[0];
+      return { type: "once", time, date, days: [] };
+    }
+
+    if (dow !== "*") {
+      return { type: "weekly", time, date: "", days: dow.split(",") };
+    }
+
+    return { type: "daily", time, date: "", days: [] };
+  },
+
+  _describeSchedule(cron) {
+    try {
+      const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      const { type, time, date, days } = this._parseCronToUI(cron);
+      const t = this._formatTime(time);
+
+      if (type === "daily") return `Every day at ${t}`;
+      if (type === "once") return `Once on ${date} at ${t}`;
+      if (type === "weekly") {
+        const sorted = [...days].sort((a, b) => Number(a) - Number(b));
+        const names = sorted.map((d) => DAY_NAMES[parseInt(d, 10)]).join(", ");
+        return `${names} at ${t}`;
+      }
+    } catch (_) {}
+    return cron;
+  },
+
+  _formatTime(hhmm) {
+    const [h, m] = hhmm.split(":");
+    const hour = parseInt(h, 10);
+    const ampm = hour >= 12 ? "PM" : "AM";
+    const h12 = hour % 12 || 12;
+    return `${h12}:${m} ${ampm}`;
+  },
+
+  // ── Modal ─────────────────────────────────────────────────────────────────
+
+  _showTypeFields(type) {
+    document.getElementById("schedule-days-wrap").style.display =
+      type === "weekly" ? "block" : "none";
+    document.getElementById("schedule-date-wrap").style.display =
+      type === "once" ? "block" : "none";
+  },
+
   _populatePlaylistSelect() {
     DOM.schedulePlaylistSelect.innerHTML = this._playlists
       .map((p) => `<option value="${p.id}">${p.name}</option>`)
@@ -86,9 +179,12 @@ const ScheduleManager = {
     document.getElementById("schedule-modal-title").textContent = "New Schedule";
     document.getElementById("schedule-id").value = "";
     DOM.scheduleNameInput.value = "";
-    DOM.scheduleCronInput.value = "";
-    if (this._playlists.length) DOM.schedulePlaylistSelect.value = this._playlists[0].id;
+    DOM.scheduleTimeInput.value = "08:00";
+    document.getElementById("schedule-type").value = "daily";
+    document.getElementById("schedule-date").value = "";
+    document.querySelectorAll('input[name="sched-day"]').forEach((cb) => (cb.checked = false));
     document.getElementById("schedule-enabled").checked = true;
+    this._showTypeFields("daily");
     DOM.scheduleModal.classList.add("show");
   },
 
@@ -98,9 +194,17 @@ const ScheduleManager = {
       document.getElementById("schedule-modal-title").textContent = "Edit Schedule";
       document.getElementById("schedule-id").value = s.id;
       DOM.scheduleNameInput.value = s.name;
-      DOM.scheduleCronInput.value = s.cron;
       DOM.schedulePlaylistSelect.value = s.playlist_id;
       document.getElementById("schedule-enabled").checked = s.enabled;
+
+      const ui = this._parseCronToUI(s.cron);
+      document.getElementById("schedule-type").value = ui.type;
+      DOM.scheduleTimeInput.value = ui.time;
+      document.getElementById("schedule-date").value = ui.date;
+      document.querySelectorAll('input[name="sched-day"]').forEach((cb) => {
+        cb.checked = ui.days.includes(cb.value);
+      });
+      this._showTypeFields(ui.type);
       DOM.scheduleModal.classList.add("show");
     });
   },
@@ -109,19 +213,36 @@ const ScheduleManager = {
     DOM.scheduleModal.classList.remove("show");
   },
 
+  // ── CRUD ──────────────────────────────────────────────────────────────────
+
   async save() {
     const id = document.getElementById("schedule-id").value;
+    const type = document.getElementById("schedule-type").value;
+    const cron = this._buildCron();
+
+    if (!DOM.scheduleNameInput.value.trim()) {
+      UI.showToast("Enter a name", TOAST_TYPES.ERROR);
+      return;
+    }
+    if (!DOM.schedulePlaylistSelect.value) {
+      UI.showToast("Select a playlist", TOAST_TYPES.ERROR);
+      return;
+    }
+    if (!cron) {
+      const msg =
+        type === "weekly"
+          ? "Select at least one day"
+          : "Select a date";
+      UI.showToast(msg, TOAST_TYPES.ERROR);
+      return;
+    }
+
     const data = {
       name: DOM.scheduleNameInput.value.trim(),
       playlist_id: DOM.schedulePlaylistSelect.value,
-      cron: DOM.scheduleCronInput.value.trim(),
+      cron,
       enabled: document.getElementById("schedule-enabled").checked,
     };
-
-    if (!data.name || !data.playlist_id || !data.cron) {
-      UI.showToast("Fill in all fields", TOAST_TYPES.ERROR);
-      return;
-    }
 
     try {
       if (id) {
@@ -141,10 +262,13 @@ const ScheduleManager = {
   async toggleEnabled(id, enabled) {
     try {
       await API.updateSchedule(id, { enabled });
-      UI.showToast(enabled ? "Schedule enabled" : "Schedule disabled", TOAST_TYPES.SUCCESS);
+      UI.showToast(
+        enabled ? "Schedule enabled" : "Schedule disabled",
+        TOAST_TYPES.SUCCESS,
+      );
     } catch (e) {
       UI.showToast(`Failed to update: ${e.message}`, TOAST_TYPES.ERROR);
-      this.load(); // re-render to restore checkbox state
+      this.load();
     }
   },
 

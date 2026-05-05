@@ -58,7 +58,7 @@ const DOM = {
   scheduleModal: document.getElementById("schedule-modal"),
   scheduleNameInput: document.getElementById("schedule-name"),
   schedulePlaylistSelect: document.getElementById("schedule-playlist"),
-  scheduleCronInput: document.getElementById("schedule-cron"),
+  scheduleTimeInput: document.getElementById("schedule-time"),
   createScheduleBtn: document.getElementById("create-schedule-btn"),
   cancelScheduleBtn: document.getElementById("cancel-schedule-btn"),
 };

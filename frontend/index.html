@@ -166,7 +166,7 @@
             <button id="new-schedule-btn" class="btn btn-primary">+ New Schedule</button>
           </div>
           <p class="help-text">
-            Automatically start playlists at scheduled times using cron expressions.
+            Automatically start playlists at scheduled times.
           </p>
           <div id="schedules-container" class="schedules-list">
             <div class="empty-state">No schedules yet. Click "+ New Schedule" to add one.</div>
@@ -225,18 +225,41 @@
             />
             <label for="schedule-playlist">Playlist:</label>
             <select id="schedule-playlist" class="input-field"></select>
-            <label for="schedule-cron">Cron Expression:</label>
-            <input
-              type="text"
-              id="schedule-cron"
+
+            <label for="schedule-type">Repeat:</label>
+            <select
+              id="schedule-type"
               class="input-field"
-              placeholder="0 8 * * 1-5"
-            />
-            <p class="help-text">
-              5 fields: minute hour day month weekday (Sun=0, Mon=1 … Sat=6).<br />
-              Examples: <code>0 8 * * 1-5</code> = weekdays at 8:00 AM &nbsp;|&nbsp;
-              <code>30 18 * * *</code> = daily at 6:30 PM
-            </p>
+              onchange="ScheduleManager._showTypeFields(this.value)"
+            >
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly (pick days)</option>
+              <option value="once">Once (specific date)</option>
+            </select>
+
+            <!-- Day checkboxes — shown for weekly -->
+            <div id="schedule-days-wrap" style="display:none">
+              <label>Days:</label>
+              <div class="day-picker">
+                <label class="day-btn"><input type="checkbox" name="sched-day" value="1" /> Mon</label>
+                <label class="day-btn"><input type="checkbox" name="sched-day" value="2" /> Tue</label>
+                <label class="day-btn"><input type="checkbox" name="sched-day" value="3" /> Wed</label>
+                <label class="day-btn"><input type="checkbox" name="sched-day" value="4" /> Thu</label>
+                <label class="day-btn"><input type="checkbox" name="sched-day" value="5" /> Fri</label>
+                <label class="day-btn"><input type="checkbox" name="sched-day" value="6" /> Sat</label>
+                <label class="day-btn"><input type="checkbox" name="sched-day" value="0" /> Sun</label>
+              </div>
+            </div>
+
+            <!-- Date picker — shown for once -->
+            <div id="schedule-date-wrap" style="display:none">
+              <label for="schedule-date">Date:</label>
+              <input type="date" id="schedule-date" class="input-field" />
+            </div>
+
+            <label for="schedule-time">Time:</label>
+            <input type="time" id="schedule-time" class="input-field" value="08:00" />
+
             <div class="idle-row" style="margin-top:8px;">
               <label class="idle-label">Enabled</label>
               <label class="toggle-switch">

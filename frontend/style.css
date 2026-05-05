@@ -840,3 +840,40 @@ footer {
     padding: 4px 12px;
     font-size: 0.8rem;
 }
+
+/* Day picker (schedule modal) */
+.day-picker {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 6px;
+}
+
+.day-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: background 0.15s, border-color 0.15s;
+    user-select: none;
+}
+
+.day-btn:has(input:checked) {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+    color: #fff;
+}
+
+.day-btn input {
+    display: none;
+}
+
+.schedule-desc {
+    font-size: 0.875rem;
+    font-weight: 500;
+}
