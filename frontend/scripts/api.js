@@ -73,4 +73,13 @@ const API = {
   // Control endpoints
   startPlayback: (playlistId) => API.call(`/start?playlist=${playlistId}`),
   stopPlayback: () => API.call("/stop"),
+
+  // Idle screen endpoints
+  getIdleConfig: () => API.call("/idle-config"),
+  saveIdleConfig: (data) =>
+    API.call("/idle-config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }),
 };

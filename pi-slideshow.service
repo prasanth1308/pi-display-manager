@@ -1,6 +1,6 @@
 [Unit]
 Description=Pi Display Manager - Image Slideshow Service with Web Interface
-After=network.target
+After=local-fs.target network.target
 
 [Service]
 Type=simple

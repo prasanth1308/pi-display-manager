@@ -11,6 +11,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Load initial data
   StatusManager.refresh();
   PlaylistManager.load();
+  IdleManager.load();
 
   // Start auto-refresh
   StatusManager.startAutoRefresh();

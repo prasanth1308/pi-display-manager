@@ -9,9 +9,12 @@ import subprocess
 import sys
 import logging
 import shutil
+import threading
+import time
 import uuid
-import yt_dlp
+from datetime import datetime
 from pathlib import Path
+import yt_dlp
 
 # Global state
 slideshow_process = None
@@ -27,8 +30,32 @@ DATA_DIR = BASE_DIR / "data"
 PLAYLISTS_DIR = DATA_DIR / "playlists"
 VIDEOS_DIR = DATA_DIR / "videos"
 UPLOADS_DIR = DATA_DIR / "uploads"
+IDLE_DIR = DATA_DIR / "idle"
 PLAYLISTS_DB_FILE = BASE_DIR / "playlists.json"
+IDLE_CONFIG_FILE = BASE_DIR / "idle_config.json"
 STATIC_DIR = BASE_DIR / "frontend"
+
+# Idle screen state
+idle_process = None
+idle_thread = None
+idle_stop_event = threading.Event()
+
+# Font search paths — Linux (Pi OS) first, then macOS dev fallbacks
+_FONT_PATHS = [
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+    "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+    "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+    "/System/Library/Fonts/Helvetica.ttc",
+    "/Library/Fonts/Arial Bold.ttf",
+]
+
+
+def _find_font():
+    for p in _FONT_PATHS:
+        if Path(p).exists():
+            return p
+    return None
 
 
 def setup_logging():
@@ -52,8 +79,9 @@ def ensure_directories():
     PLAYLISTS_DIR.mkdir(parents=True, exist_ok=True)
     VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
     UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    IDLE_DIR.mkdir(parents=True, exist_ok=True)
     STATIC_DIR.mkdir(parents=True, exist_ok=True)
-    
+
     logger.info("Directory structure ensured")
 
 
@@ -95,6 +123,313 @@ def load_playlists_db():
         logger.error("Failed to load playlists database: %s", e)
         playlists_db = {"playlists": {}, "active_playlist": None}
 
+
+# ── Idle Screen ───────────────────────────────────────────────────────────────
+
+def get_idle_config():
+    """Return the current idle config dict."""
+    try:
+        if IDLE_CONFIG_FILE.exists():
+            return json.loads(IDLE_CONFIG_FILE.read_text())
+    except Exception:
+        pass
+    return {"image_path": None, "custom_text": "", "enabled": False}
+
+
+def load_idle_config():
+    """Load idle config and apply to the player."""
+    cfg = get_idle_config()
+    if cfg.get("enabled") and cfg.get("image_path"):
+        logger.info("Idle screen configured: %s", cfg["image_path"])
+    return cfg
+
+
+def save_idle_config(data):
+    """Persist idle config and return the saved dict."""
+    cfg = {
+        "image_path": data.get("image_path"),
+        "custom_text": data.get("custom_text", ""),
+        "enabled": bool(data.get("enabled", True)),
+    }
+    IDLE_CONFIG_FILE.write_text(json.dumps(cfg))
+    logger.info("Idle config saved")
+    return cfg
+
+
+def _get_display_size():
+    """Read framebuffer resolution from sysfs. Falls back to 1920x1080."""
+    try:
+        text = Path("/sys/class/graphics/fb0/virtual_size").read_text().strip()
+        w, h = map(int, text.split(","))
+        if w > 0 and h > 0:
+            return w, h
+    except Exception:
+        pass
+    return 1920, 1080
+
+
+def _write_framebuffer(img, fb_path):
+    """
+    Write a PIL Image directly to the framebuffer — no external process, no flicker.
+    Supports 32bpp BGRA (common on Pi) and 16bpp RGB565.
+    Returns True on success.
+    """
+    try:
+        bpp_path = Path("/sys/class/graphics/fb0/bits_per_pixel")
+        bpp = int(bpp_path.read_text().strip()) if bpp_path.exists() else 32
+
+        if bpp == 16:
+            import array
+            rgb = img.convert("RGB")
+            buf = array.array("H")
+            for r, g, b in rgb.getdata():
+                buf.append(((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3))
+            data = buf.tobytes()
+        else:
+            # 32bpp BGRA — swap R and B channels
+            from PIL import Image as _Img
+            r, g, b = img.convert("RGB").split()
+            bgra = _Img.merge("RGBA", (b, g, r, _Img.new("L", img.size, 255)))
+            data = bgra.tobytes()
+
+        with open(fb_path, "wb") as f:
+            f.write(data)
+        return True
+    except Exception as e:
+        logger.warning("Direct framebuffer write failed: %s", e)
+        return False
+
+
+def _sleep_until_next_minute():
+    """
+    Block until the next minute boundary, waking early if idle_stop_event is set.
+    Returns True if interrupted by stop_event.
+    """
+    now = datetime.now()
+    seconds_left = 60 - now.second - now.microsecond / 1_000_000
+    deadline = time.monotonic() + seconds_left
+    while time.monotonic() < deadline:
+        remaining = deadline - time.monotonic()
+        if idle_stop_event.wait(timeout=min(remaining, 1.0)):
+            return True  # stop requested
+    return False
+
+
+def generate_idle_image(base_image_path, custom_text):
+    """
+    Composite base_image_path — fitted letterboxed to the display resolution —
+    with a semi-transparent bottom bar showing date+time (right) and
+    custom_text (left). Returns the output path, or None on failure.
+    """
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+    except ImportError:
+        logger.warning("Pillow not installed — idle image has no overlay")
+        return base_image_path
+
+    try:
+        # ── Fit image to display ──────────────────────────────────────────
+        if sys.platform == "linux":
+            disp_w, disp_h = _get_display_size()
+        else:
+            disp_w, disp_h = 1920, 1080  # dev fallback
+
+        canvas = Image.new("RGB", (disp_w, disp_h), (0, 0, 0))
+        src = Image.open(base_image_path).convert("RGB")
+        src.thumbnail((disp_w, disp_h), Image.LANCZOS)
+        canvas.paste(src, ((disp_w - src.width) // 2, (disp_h - src.height) // 2))
+
+        img = canvas
+        w, h = disp_w, disp_h
+
+        # ── Overlay bar ───────────────────────────────────────────────────
+        bar_h = max(int(h * 0.15), 72)
+        overlay = Image.new("RGBA", (w, bar_h), (0, 0, 0, 185))
+        img_rgba = img.convert("RGBA")
+        img_rgba.paste(overlay, (0, h - bar_h), overlay)
+        img = img_rgba.convert("RGB")
+
+        draw = ImageDraw.Draw(img)
+        font_path = _find_font()
+
+        def _font(size):
+            if font_path:
+                try:
+                    return ImageFont.truetype(font_path, size)
+                except Exception:
+                    pass
+            return ImageFont.load_default()
+
+        now = datetime.now()
+        time_str = now.strftime("%H:%M")
+        date_str = now.strftime("%A, %B %d, %Y")
+
+        time_size = max(int(bar_h * 0.40), 26)
+        date_size = max(int(bar_h * 0.24), 16)
+        custom_size = max(int(bar_h * 0.28), 18)
+
+        time_font = _font(time_size)
+        date_font = _font(date_size)
+        custom_font = _font(custom_size)
+
+        pad = int(w * 0.025)
+        bar_top = h - bar_h
+        white = (255, 255, 255)
+        black = (0, 0, 0)
+
+        def _draw_text(text, font, x, y):
+            draw.text((x + 2, y + 2), text, font=font, fill=black)
+            draw.text((x, y), text, font=font, fill=white)
+
+        def _text_size(text, font):
+            try:
+                bb = draw.textbbox((0, 0), text, font=font)
+                return bb[2] - bb[0], bb[3] - bb[1]
+            except AttributeError:
+                return draw.textsize(text, font=font)
+
+        time_w, time_h_px = _text_size(time_str, time_font)
+        date_w, _ = _text_size(date_str, date_font)
+
+        # Right side: clock stacked above date, both right-aligned
+        gap = max(int(bar_h * 0.08), 8)
+        v_block = time_h_px + gap + date_size
+        time_y = bar_top + (bar_h - v_block) // 2
+        _draw_text(time_str, time_font, w - pad - time_w, time_y)
+        _draw_text(date_str, date_font, w - pad - date_w, time_y + time_h_px + gap)
+
+        # Left side: custom text, vertically centred in bar
+        if custom_text:
+            _, ct_h = _text_size(custom_text, custom_font)
+            _draw_text(custom_text, custom_font, pad, bar_top + (bar_h - ct_h) // 2)
+
+        out_path = "/tmp/pi_display_idle.jpg"
+        img.save(out_path, "JPEG", quality=92)
+        return out_path
+
+    except Exception as e:
+        logger.error("Failed to generate idle image: %s", e)
+        return None
+
+
+def _kill_idle_fbi():
+    """Terminate the idle fbi process and kill any stray fbi instances."""
+    global idle_process
+    if idle_process is not None:
+        try:
+            idle_process.terminate()
+            idle_process.wait(timeout=2)
+        except Exception:
+            try:
+                idle_process.kill()
+            except Exception:
+                pass
+        idle_process = None
+    try:
+        subprocess.run(["pkill", "-x", "fbi"], capture_output=True)
+    except Exception:
+        pass
+
+
+def _run_idle_loop(image_path, custom_text):
+    """
+    Background thread for the idle screen.
+
+    Strategy (Linux):
+      1. Write the composite image directly to /dev/fb0 — instant, zero flicker.
+      2. Sleep until the next minute boundary (not a flat 60 s) so the clock
+         turns over precisely.
+      3. If direct framebuffer write fails (permissions etc.) fall back to fbi.
+
+    On macOS (dev): fbi not available; just regenerates the temp file silently.
+    """
+    global idle_process
+
+    logger.info("Idle screen thread started")
+    framebuffer = config.get("framebuffer", "/dev/fb0")
+    is_linux = sys.platform == "linux"
+
+    # Try direct write first; if it fails once, switch to fbi fallback.
+    use_direct = is_linux
+
+    # Kill any fbi left over from a previous slideshow before we start
+    if is_linux:
+        _kill_idle_fbi()
+
+    while not idle_stop_event.is_set():
+        idle_img_path = generate_idle_image(image_path, custom_text)
+
+        if idle_img_path and use_direct:
+            try:
+                from PIL import Image as _Img
+                img = _Img.open(idle_img_path)
+                if not _write_framebuffer(img, framebuffer):
+                    # Direct write failed — fall back to fbi for the rest of the session
+                    logger.info("Falling back to fbi for idle screen")
+                    use_direct = False
+            except Exception as e:
+                logger.error("Idle direct-write error: %s", e)
+                use_direct = False
+
+        if idle_img_path and not use_direct and is_linux:
+            # fbi fallback: kill previous instance, start new one
+            _kill_idle_fbi()
+            cmd = [
+                "fbi", "-T", "1", "-d", framebuffer,
+                "--noverbose", "-t", "86400", idle_img_path,
+            ]
+            try:
+                fbi_log = BASE_DIR / "fbi_error.log"
+                with open(fbi_log, "a") as f:
+                    idle_process = subprocess.Popen(
+                        cmd, stdin=subprocess.DEVNULL, stdout=f, stderr=f
+                    )
+            except FileNotFoundError:
+                logger.warning("fbi not found — idle display unavailable")
+            except Exception as e:
+                logger.error("Failed to start idle fbi: %s", e)
+
+        # Sleep until the clock minute turns over, not a flat interval
+        if _sleep_until_next_minute():
+            break  # stop_event fired
+
+    _kill_idle_fbi()
+    logger.info("Idle screen thread stopped")
+
+
+def start_idle_screen():
+    """Start the idle screen if configured and enabled."""
+    global idle_thread, idle_stop_event
+
+    cfg = get_idle_config()
+    if not cfg.get("enabled") or not cfg.get("image_path"):
+        return
+
+    stop_idle_screen()  # ensure clean state
+
+    idle_stop_event.clear()
+    idle_thread = threading.Thread(
+        target=_run_idle_loop,
+        args=(cfg["image_path"], cfg.get("custom_text", "")),
+        daemon=True,
+        name="idle-screen",
+    )
+    idle_thread.start()
+    logger.info("Idle screen started")
+
+
+def stop_idle_screen():
+    """Stop the idle screen thread and kill any fbi process it owns."""
+    global idle_thread, idle_stop_event
+
+    idle_stop_event.set()
+    if idle_thread and idle_thread.is_alive():
+        idle_thread.join(timeout=3)
+    idle_thread = None
+    idle_stop_event = threading.Event()  # reset for next use
+
+
+# ── Playlists DB ──────────────────────────────────────────────────────────────
 
 def save_playlists_db():
     """Save playlists database"""
@@ -140,6 +475,8 @@ def clear_framebuffer():
 def start_slideshow(playlist_id=None):
     """Start the slideshow using fbi"""
     global slideshow_process, current_playlist
+
+    stop_idle_screen()
 
     if slideshow_process is not None:
         logger.info("Slideshow already running - start request ignored")
@@ -224,6 +561,7 @@ def stop_slideshow():
             logger.error("Error running pkill: %s", str(e))
         
         clear_framebuffer()
+        start_idle_screen()
         return {"status": "not_running", "message": "Slideshow is not running (cleaned up framebuffer)"}
 
     try:
@@ -245,6 +583,7 @@ def stop_slideshow():
         logger.error("Error running pkill: %s", str(e))
 
     clear_framebuffer()
+    start_idle_screen()
 
     return {"status": "stopped", "message": "Slideshow stopped"}
 
@@ -488,7 +827,7 @@ def get_playlist_videos_list(playlist_id):
     return {"status": "success", "playlist_id": playlist_id, "videos": videos}
 
 
-def parse_multipart_form_data(content_type, body):
+def parse_multipart_form_data(content_type, body, expected_field="image"):
     """Parse multipart/form-data without using deprecated cgi module"""
     try:
         # Extract boundary from content type
@@ -538,7 +877,7 @@ def parse_multipart_form_data(content_type, body):
                             elif 'name=' in param:
                                 field_name = param.split('=', 1)[1].strip('"')
                 
-                if field_name == 'image' and filename and content:
+                if field_name == expected_field and filename and content:
                     return {'filename': filename, 'data': content}
             
             except Exception as e:
@@ -707,7 +1046,9 @@ def get_playlist_videos(playlist_id):
 def start_video_playback(playlist_id):
     """Start video playback using VLC in loop mode"""
     global video_process, current_playlist
-    
+
+    stop_idle_screen()
+
     if video_process is not None:
         logger.info("Video already playing - start request ignored")
         return {"status": "error", "message": "Video is already playing"}
@@ -819,5 +1160,6 @@ def stop_video_playback():
         logger.info("Killed all VLC processes")
     except Exception as e:
         logger.error("Error running pkill: %s", str(e))
-    
+
+    start_idle_screen()
     return {"status": "stopped", "message": "Video playback stopped"}

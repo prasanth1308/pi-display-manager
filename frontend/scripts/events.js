@@ -65,5 +65,9 @@ const EventListeners = {
     DOM.videoUrlInput.addEventListener("keypress", (e) => {
       if (e.key === "Enter") VideoManager.startDownload();
     });
+
+    // Idle screen
+    DOM.idleSaveBtn.addEventListener("click", () => IdleManager.save());
+    IdleManager.initUploadZone();
   },
 };

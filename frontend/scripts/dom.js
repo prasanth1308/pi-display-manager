@@ -48,4 +48,7 @@ const DOM = {
 
   // Toast container
   toastContainer: document.getElementById("toast-container"),
+
+  // Idle screen
+  idleSaveBtn: document.getElementById("idle-save-btn"),
 };
