@@ -82,7 +82,6 @@ const API = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     }),
-  stopIdle: () => API.call("/idle/stop", { method: "POST" }),
 
   // Scheduler endpoints
   getSchedules: () => API.call("/schedules"),

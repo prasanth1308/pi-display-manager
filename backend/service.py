@@ -435,20 +435,6 @@ def stop_idle_screen():
     idle_stop_event = threading.Event()  # reset for next use
 
 
-def stop_idle_and_restore_terminal():
-    """Stop idle screen and hand the display back to the Linux console."""
-    stop_idle_screen()
-    if sys.platform == "linux":
-        # chvt 1 switches back to virtual terminal 1 (the text console),
-        # which lets the framebuffer show the TTY again.
-        try:
-            subprocess.run(["chvt", "1"], capture_output=True)
-            logger.info("Switched back to VT1 (terminal restored)")
-        except Exception as e:
-            logger.warning("chvt failed: %s", e)
-    return {"status": "stopped", "message": "Idle screen stopped, terminal restored"}
-
-
 # ── Playlists DB ──────────────────────────────────────────────────────────────
 
 def save_playlists_db():

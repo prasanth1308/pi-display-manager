@@ -36,7 +36,6 @@ from service import (
 
     # Idle screen
     get_idle_config, save_idle_config, start_idle_screen, stop_idle_screen,
-    stop_idle_and_restore_terminal,
 
     # Scheduler
     load_schedules_db, list_schedules, get_schedule, create_schedule,
@@ -379,9 +378,6 @@ class APIHandler(BaseHTTPRequestHandler):
                 if cfg.get("enabled") and cfg.get("image_path"):
                     start_idle_screen()
                 response = cfg
-
-            elif path == "/api/idle/stop":
-                response = stop_idle_and_restore_terminal()
 
             elif path == "/api/idle-config/upload":
                 content_type_hdr = self.headers.get("Content-Type", "")
