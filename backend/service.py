@@ -156,24 +156,95 @@ def save_idle_config(data):
     return cfg
 
 
+def _get_display_size():
+    """Read framebuffer resolution from sysfs. Falls back to 1920x1080."""
+    try:
+        text = Path("/sys/class/graphics/fb0/virtual_size").read_text().strip()
+        w, h = map(int, text.split(","))
+        if w > 0 and h > 0:
+            return w, h
+    except Exception:
+        pass
+    return 1920, 1080
+
+
+def _write_framebuffer(img, fb_path):
+    """
+    Write a PIL Image directly to the framebuffer — no external process, no flicker.
+    Supports 32bpp BGRA (common on Pi) and 16bpp RGB565.
+    Returns True on success.
+    """
+    try:
+        bpp_path = Path("/sys/class/graphics/fb0/bits_per_pixel")
+        bpp = int(bpp_path.read_text().strip()) if bpp_path.exists() else 32
+
+        if bpp == 16:
+            import array
+            rgb = img.convert("RGB")
+            buf = array.array("H")
+            for r, g, b in rgb.getdata():
+                buf.append(((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3))
+            data = buf.tobytes()
+        else:
+            # 32bpp BGRA — swap R and B channels
+            from PIL import Image as _Img
+            r, g, b = img.convert("RGB").split()
+            bgra = _Img.merge("RGBA", (b, g, r, _Img.new("L", img.size, 255)))
+            data = bgra.tobytes()
+
+        with open(fb_path, "wb") as f:
+            f.write(data)
+        return True
+    except Exception as e:
+        logger.warning("Direct framebuffer write failed: %s", e)
+        return False
+
+
+def _sleep_until_next_minute():
+    """
+    Block until the next minute boundary, waking early if idle_stop_event is set.
+    Returns True if interrupted by stop_event.
+    """
+    now = datetime.now()
+    seconds_left = 60 - now.second - now.microsecond / 1_000_000
+    deadline = time.monotonic() + seconds_left
+    while time.monotonic() < deadline:
+        remaining = deadline - time.monotonic()
+        if idle_stop_event.wait(timeout=min(remaining, 1.0)):
+            return True  # stop requested
+    return False
+
+
 def generate_idle_image(base_image_path, custom_text):
     """
-    Composite base_image_path with a semi-transparent bottom bar showing
-    date+time (right) and custom_text (left). Returns output path or
-    base_image_path if Pillow is unavailable.
+    Composite base_image_path — fitted letterboxed to the display resolution —
+    with a semi-transparent bottom bar showing date+time (right) and
+    custom_text (left). Returns the output path, or None on failure.
     """
     try:
         from PIL import Image, ImageDraw, ImageFont
     except ImportError:
-        logger.warning("Pillow not installed — showing idle image without overlay")
+        logger.warning("Pillow not installed — idle image has no overlay")
         return base_image_path
 
     try:
-        img = Image.open(base_image_path).convert("RGB")
-        w, h = img.size
+        # ── Fit image to display ──────────────────────────────────────────
+        if sys.platform == "linux":
+            disp_w, disp_h = _get_display_size()
+        else:
+            disp_w, disp_h = 1920, 1080  # dev fallback
 
-        bar_h = max(int(h * 0.25), 80)
-        overlay = Image.new("RGBA", (w, bar_h), (0, 0, 0, 180))
+        canvas = Image.new("RGB", (disp_w, disp_h), (0, 0, 0))
+        src = Image.open(base_image_path).convert("RGB")
+        src.thumbnail((disp_w, disp_h), Image.LANCZOS)
+        canvas.paste(src, ((disp_w - src.width) // 2, (disp_h - src.height) // 2))
+
+        img = canvas
+        w, h = disp_w, disp_h
+
+        # ── Overlay bar ───────────────────────────────────────────────────
+        bar_h = max(int(h * 0.15), 72)
+        overlay = Image.new("RGBA", (w, bar_h), (0, 0, 0, 185))
         img_rgba = img.convert("RGBA")
         img_rgba.paste(overlay, (0, h - bar_h), overlay)
         img = img_rgba.convert("RGB")
@@ -193,49 +264,42 @@ def generate_idle_image(base_image_path, custom_text):
         time_str = now.strftime("%H:%M")
         date_str = now.strftime("%A, %B %d, %Y")
 
-        time_size = max(int(bar_h * 0.50), 32)
-        date_size = max(int(bar_h * 0.22), 16)
-        custom_size = max(int(bar_h * 0.25), 18)
+        time_size = max(int(bar_h * 0.52), 32)
+        date_size = max(int(bar_h * 0.24), 16)
+        custom_size = max(int(bar_h * 0.28), 18)
 
         time_font = _font(time_size)
         date_font = _font(date_size)
         custom_font = _font(custom_size)
 
-        pad = int(w * 0.03)
+        pad = int(w * 0.025)
         bar_top = h - bar_h
         white = (255, 255, 255)
-        shadow = (0, 0, 0)
+        black = (0, 0, 0)
 
         def _draw_text(text, font, x, y):
-            draw.text((x + 2, y + 2), text, font=font, fill=shadow)
+            draw.text((x + 2, y + 2), text, font=font, fill=black)
             draw.text((x, y), text, font=font, fill=white)
 
-        # Measure time block
-        try:
-            time_bbox = draw.textbbox((0, 0), time_str, font=time_font)
-            time_w = time_bbox[2] - time_bbox[0]
-            time_h_px = time_bbox[3] - time_bbox[1]
-        except AttributeError:
-            time_w, time_h_px = draw.textsize(time_str, font=time_font)
+        def _text_size(text, font):
+            try:
+                bb = draw.textbbox((0, 0), text, font=font)
+                return bb[2] - bb[0], bb[3] - bb[1]
+            except AttributeError:
+                return draw.textsize(text, font=font)
 
-        time_x = w - pad - time_w
-        time_y = bar_top + (bar_h - time_h_px) // 2 - int(date_size * 0.6)
-        _draw_text(time_str, time_font, time_x, time_y)
+        time_w, time_h_px = _text_size(time_str, time_font)
+        date_w, _ = _text_size(date_str, date_font)
 
-        try:
-            date_bbox = draw.textbbox((0, 0), date_str, font=date_font)
-            date_w = date_bbox[2] - date_bbox[0]
-        except AttributeError:
-            date_w, _ = draw.textsize(date_str, font=date_font)
-
+        # Right side: clock stacked above date, both right-aligned
+        v_block = time_h_px + 4 + date_size
+        time_y = bar_top + (bar_h - v_block) // 2
+        _draw_text(time_str, time_font, w - pad - time_w, time_y)
         _draw_text(date_str, date_font, w - pad - date_w, time_y + time_h_px + 4)
 
+        # Left side: custom text, vertically centred in bar
         if custom_text:
-            try:
-                ct_bbox = draw.textbbox((0, 0), custom_text, font=custom_font)
-                ct_h = ct_bbox[3] - ct_bbox[1]
-            except AttributeError:
-                _, ct_h = draw.textsize(custom_text, font=custom_font)
+            _, ct_h = _text_size(custom_text, custom_font)
             _draw_text(custom_text, custom_font, pad, bar_top + (bar_h - ct_h) // 2)
 
         out_path = "/tmp/pi_display_idle.jpg"
@@ -244,61 +308,12 @@ def generate_idle_image(base_image_path, custom_text):
 
     except Exception as e:
         logger.error("Failed to generate idle image: %s", e)
-        return base_image_path
+        return None
 
 
-def _run_idle_loop(image_path, custom_text):
-    """Background thread: renders and displays idle image, refreshes every 60 s."""
+def _kill_idle_fbi():
+    """Terminate the idle fbi process and kill any stray fbi instances."""
     global idle_process
-
-    logger.info("Idle screen thread started")
-    framebuffer = config.get("framebuffer", "/dev/fb0")
-
-    while not idle_stop_event.is_set():
-        idle_img = generate_idle_image(image_path, custom_text)
-
-        # Kill any existing idle or fbi process
-        if idle_process is not None:
-            try:
-                idle_process.terminate()
-                idle_process.wait(timeout=2)
-            except Exception:
-                try:
-                    idle_process.kill()
-                except Exception:
-                    pass
-            idle_process = None
-
-        try:
-            subprocess.run(["pkill", "-x", "fbi"], capture_output=True)
-        except Exception:
-            pass
-
-        cmd = [
-            "fbi",
-            "-T", "1",
-            "-d", framebuffer,
-            "--noverbose",
-            "-t", "86400",  # stay for 24 h; we kill it on next refresh
-            idle_img,
-        ]
-        try:
-            fbi_log = BASE_DIR / "fbi_error.log"
-            with open(fbi_log, "a") as f:
-                f.write(f"\n=== Idle screen started at {datetime.now()} ===\n")
-            with open(fbi_log, "a") as f:
-                idle_process = subprocess.Popen(
-                    cmd, stdin=subprocess.DEVNULL, stdout=f, stderr=f
-                )
-            logger.info("Idle fbi started (PID %d)", idle_process.pid)
-        except FileNotFoundError:
-            logger.warning("fbi not found — idle screen unavailable on this system")
-        except Exception as e:
-            logger.error("Failed to start idle fbi: %s", e)
-
-        idle_stop_event.wait(timeout=60)
-
-    # Cleanup
     if idle_process is not None:
         try:
             idle_process.terminate()
@@ -309,6 +324,75 @@ def _run_idle_loop(image_path, custom_text):
             except Exception:
                 pass
         idle_process = None
+    try:
+        subprocess.run(["pkill", "-x", "fbi"], capture_output=True)
+    except Exception:
+        pass
+
+
+def _run_idle_loop(image_path, custom_text):
+    """
+    Background thread for the idle screen.
+
+    Strategy (Linux):
+      1. Write the composite image directly to /dev/fb0 — instant, zero flicker.
+      2. Sleep until the next minute boundary (not a flat 60 s) so the clock
+         turns over precisely.
+      3. If direct framebuffer write fails (permissions etc.) fall back to fbi.
+
+    On macOS (dev): fbi not available; just regenerates the temp file silently.
+    """
+    global idle_process
+
+    logger.info("Idle screen thread started")
+    framebuffer = config.get("framebuffer", "/dev/fb0")
+    is_linux = sys.platform == "linux"
+
+    # Try direct write first; if it fails once, switch to fbi fallback.
+    use_direct = is_linux
+
+    # Kill any fbi left over from a previous slideshow before we start
+    if is_linux:
+        _kill_idle_fbi()
+
+    while not idle_stop_event.is_set():
+        idle_img_path = generate_idle_image(image_path, custom_text)
+
+        if idle_img_path and use_direct:
+            try:
+                from PIL import Image as _Img
+                img = _Img.open(idle_img_path)
+                if not _write_framebuffer(img, framebuffer):
+                    # Direct write failed — fall back to fbi for the rest of the session
+                    logger.info("Falling back to fbi for idle screen")
+                    use_direct = False
+            except Exception as e:
+                logger.error("Idle direct-write error: %s", e)
+                use_direct = False
+
+        if idle_img_path and not use_direct and is_linux:
+            # fbi fallback: kill previous instance, start new one
+            _kill_idle_fbi()
+            cmd = [
+                "fbi", "-T", "1", "-d", framebuffer,
+                "--noverbose", "-t", "86400", idle_img_path,
+            ]
+            try:
+                fbi_log = BASE_DIR / "fbi_error.log"
+                with open(fbi_log, "a") as f:
+                    idle_process = subprocess.Popen(
+                        cmd, stdin=subprocess.DEVNULL, stdout=f, stderr=f
+                    )
+            except FileNotFoundError:
+                logger.warning("fbi not found — idle display unavailable")
+            except Exception as e:
+                logger.error("Failed to start idle fbi: %s", e)
+
+        # Sleep until the clock minute turns over, not a flat interval
+        if _sleep_until_next_minute():
+            break  # stop_event fired
+
+    _kill_idle_fbi()
     logger.info("Idle screen thread stopped")
 
 
