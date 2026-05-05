@@ -68,6 +68,7 @@ const EventListeners = {
 
     // Idle screen
     DOM.idleSaveBtn.addEventListener("click", () => IdleManager.save());
+    DOM.idleStopBtn.addEventListener("click", () => IdleManager.stopAndRestore());
     IdleManager.initUploadZone();
 
     // Scheduler

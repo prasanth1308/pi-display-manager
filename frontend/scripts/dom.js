@@ -51,6 +51,7 @@ const DOM = {
 
   // Idle screen
   idleSaveBtn: document.getElementById("idle-save-btn"),
+  idleStopBtn: document.getElementById("idle-stop-btn"),
 
   // Scheduler
   newScheduleBtn: document.getElementById("new-schedule-btn"),
