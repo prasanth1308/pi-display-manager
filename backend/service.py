@@ -428,6 +428,7 @@ def stop_idle_screen():
     """Stop the idle screen thread and kill any fbi process it owns."""
     global idle_thread, idle_stop_event
 
+    clear_framebuffer()
     idle_stop_event.set()
     if idle_thread and idle_thread.is_alive():
         idle_thread.join(timeout=3)
