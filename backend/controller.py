@@ -11,6 +11,12 @@ from urllib.parse import urlparse, parse_qs
 import signal
 import sys
 
+# Import authentication module
+from auth import (
+    authenticate_user, validate_session, destroy_session, 
+    require_auth, cleanup_expired_sessions
+)
+
 # Import service layer functions and state
 from service import (
     # Core functions
@@ -50,13 +56,86 @@ class APIHandler(BaseHTTPRequestHandler):
 
         logger.info("GET %s from %s", path, self.client_address[0])
 
-        # Serve static files
+        # Public endpoints (no auth required)
+        if path == "/login.html" or path == "/login":
+            self.serve_static_file("login.html")
+            return
+        elif path == "/api/auth/status":
+            # Check if user is authenticated
+            cookie_header = self.headers.get('Cookie', '')
+            session_token = None
+            for cookie in cookie_header.split(';'):
+                cookie = cookie.strip()
+                if cookie.startswith('session_token='):
+                    session_token = cookie.split('=', 1)[1]
+                    break
+            
+            user_info = validate_session(session_token)
+            if user_info:
+                response = {"authenticated": True, "user": user_info}
+            else:
+                response = {"authenticated": False}
+            self.send_json_response(response, 200)
+            return
+        elif path == "/api/auth/logout":
+            # Handle logout
+            cookie_header = self.headers.get('Cookie', '')
+            session_token = None
+            for cookie in cookie_header.split(';'):
+                cookie = cookie.strip()
+                if cookie.startswith('session_token='):
+                    session_token = cookie.split('=', 1)[1]
+                    break
+            
+            if session_token:
+                destroy_session(session_token)
+            
+            response = {"status": "success", "message": "Logged out successfully"}
+            self.send_json_response(response, 200)
+            return
+
+        # Serve static files (requires auth)
         if path == "/" or path == "/index.html":
+            # Check authentication before serving main page
+            cookie_header = self.headers.get('Cookie', '')
+            session_token = None
+            for cookie in cookie_header.split(';'):
+                cookie = cookie.strip()
+                if cookie.startswith('session_token='):
+                    session_token = cookie.split('=', 1)[1]
+                    break
+            
+            user_info = validate_session(session_token)
+            if not user_info:
+                # Redirect to login
+                self.send_response(302)
+                self.send_header('Location', '/login.html')
+                self.end_headers()
+                return
+            
             self.serve_static_file("index.html")
             return
         elif path.startswith("/frontend/"):
             self.serve_static_file(path[10:])  # Remove "/frontend/" prefix
             return
+
+        # Protected API endpoints (require authentication)
+        cookie_header = self.headers.get('Cookie', '')
+        session_token = None
+        for cookie in cookie_header.split(';'):
+            cookie = cookie.strip()
+            if cookie.startswith('session_token='):
+                session_token = cookie.split('=', 1)[1]
+                break
+        
+        user_info = validate_session(session_token)
+        if not user_info:
+            response = {"status": "error", "message": "Unauthorized. Please login."}
+            self.send_json_response(response, 401)
+            return
+        
+        # Store current user for logging
+        self.current_user = user_info
 
         # API endpoints
         if path == "/api/status":
@@ -150,6 +229,59 @@ class APIHandler(BaseHTTPRequestHandler):
         logger.info("POST %s from %s", path, self.client_address[0])
 
         try:
+            # Public endpoints (no auth required)
+            if path == "/api/auth/login":
+                # Handle login
+                content_length = int(self.headers['Content-Length'])
+                post_data = self.rfile.read(content_length)
+                data = json.loads(post_data.decode('utf-8'))
+                
+                username = data.get('username', '')
+                password = data.get('password', '')
+                
+                success, result = authenticate_user(username, password)
+                
+                if success:
+                    # Set session cookie
+                    response = {
+                        "status": "success",
+                        "message": "Login successful",
+                        "user": {
+                            "username": username
+                        }
+                    }
+                    
+                    # Send response with cookie
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'application/json')
+                    self.send_header('Set-Cookie', f'session_token={result}; Path=/; HttpOnly; SameSite=Strict; Max-Age=3600')
+                    self.end_headers()
+                    self.wfile.write(json.dumps(response).encode())
+                    return
+                else:
+                    response = {"status": "error", "message": result}
+                    status = 401
+                    self.send_json_response(response, status)
+                    return
+            
+            # Protected endpoints (require authentication)
+            cookie_header = self.headers.get('Cookie', '')
+            session_token = None
+            for cookie in cookie_header.split(';'):
+                cookie = cookie.strip()
+                if cookie.startswith('session_token='):
+                    session_token = cookie.split('=', 1)[1]
+                    break
+            
+            user_info = validate_session(session_token)
+            if not user_info:
+                response = {"status": "error", "message": "Unauthorized. Please login."}
+                self.send_json_response(response, 401)
+                return
+            
+            # Store current user for logging
+            self.current_user = user_info
+            
             if path == "/api/playlists/create":
                 # Create new playlist
                 content_length = int(self.headers['Content-Length'])
@@ -268,6 +400,24 @@ class APIHandler(BaseHTTPRequestHandler):
         logger.info("DELETE %s from %s", path, self.client_address[0])
 
         try:
+            # Protected endpoints (require authentication)
+            cookie_header = self.headers.get('Cookie', '')
+            session_token = None
+            for cookie in cookie_header.split(';'):
+                cookie = cookie.strip()
+                if cookie.startswith('session_token='):
+                    session_token = cookie.split('=', 1)[1]
+                    break
+            
+            user_info = validate_session(session_token)
+            if not user_info:
+                response = {"status": "error", "message": "Unauthorized. Please login."}
+                self.send_json_response(response, 401)
+                return
+            
+            # Store current user for logging
+            self.current_user = user_info
+            
             if path.startswith("/api/playlists/") and "/images/" in path:
                 # Delete image from playlist
                 parts = path.split("/")
