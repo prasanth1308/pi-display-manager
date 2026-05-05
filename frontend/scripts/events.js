@@ -68,6 +68,24 @@ const EventListeners = {
 
     // Idle screen
     DOM.idleSaveBtn.addEventListener("click", () => IdleManager.save());
+    DOM.idleStopBtn.addEventListener("click", () => IdleManager.stopAndRestore());
     IdleManager.initUploadZone();
+
+    // Scheduler
+    DOM.newScheduleBtn.addEventListener("click", () =>
+      ScheduleManager.showCreateModal(),
+    );
+    DOM.createScheduleBtn.addEventListener("click", () =>
+      ScheduleManager.save(),
+    );
+    DOM.cancelScheduleBtn.addEventListener("click", () =>
+      ScheduleManager.hideModal(),
+    );
+    DOM.scheduleModal.addEventListener("click", (e) => {
+      if (e.target === DOM.scheduleModal) ScheduleManager.hideModal();
+    });
+    document
+      .querySelector(".close-schedule")
+      .addEventListener("click", () => ScheduleManager.hideModal());
   },
 };

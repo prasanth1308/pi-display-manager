@@ -30,6 +30,11 @@ from service import (
 
     # Idle screen
     get_idle_config, save_idle_config, start_idle_screen, stop_idle_screen,
+    stop_idle_and_restore_terminal,
+
+    # Scheduler
+    load_schedules_db, list_schedules, get_schedule, create_schedule,
+    update_schedule, delete_schedule, stop_scheduler,
 )
 
 
@@ -117,6 +122,13 @@ class APIHandler(BaseHTTPRequestHandler):
             response = {"status": "success", "message": "Framebuffer cleared"}
         elif path == "/api/idle-config":
             response = get_idle_config()
+        elif path == "/api/schedules":
+            response = list_schedules()
+        elif path.startswith("/api/schedules/"):
+            schedule_id = path.split("/")[3]
+            s = get_schedule(schedule_id)
+            response = s if s else {"status": "error", "message": "Not found"}
+            status = 200 if s else 404
         elif path == "/api/health":
             response = {"status": "ok"}
         elif path.startswith("/data/idle/"):
@@ -216,6 +228,16 @@ class APIHandler(BaseHTTPRequestHandler):
                             "message": "Download started"
                         }
             
+            elif path == "/api/schedules":
+                content_length = int(self.headers.get("Content-Length", 0))
+                data = json.loads(self.rfile.read(content_length))
+                result = create_schedule(
+                    data["name"], data["playlist_id"], data["cron"],
+                    data.get("enabled", True)
+                )
+                response = result
+                status = 201
+
             elif path == "/api/idle-config":
                 content_length = int(self.headers.get("Content-Length", 0))
                 post_data = self.rfile.read(content_length)
@@ -225,6 +247,9 @@ class APIHandler(BaseHTTPRequestHandler):
                 if cfg.get("enabled") and cfg.get("image_path"):
                     start_idle_screen()
                 response = cfg
+
+            elif path == "/api/idle/stop":
+                response = stop_idle_and_restore_terminal()
 
             elif path == "/api/idle-config/upload":
                 content_type_hdr = self.headers.get("Content-Type", "")
@@ -286,7 +311,13 @@ class APIHandler(BaseHTTPRequestHandler):
                 # Delete playlist
                 playlist_id = path.split("/")[3]
                 response = delete_playlist(playlist_id)
-            
+
+            elif path.startswith("/api/schedules/"):
+                schedule_id = path.split("/")[3]
+                ok = delete_schedule(schedule_id)
+                response = {"status": "ok" if ok else "error"}
+                status = 200 if ok else 404
+
             else:
                 response = {"status": "error", "message": "Unknown DELETE endpoint"}
                 status = 404
@@ -297,6 +328,31 @@ class APIHandler(BaseHTTPRequestHandler):
             status = 500
 
         self.send_json_response(response, status)
+
+    def do_PUT(self):
+        """Handle PUT requests"""
+        from service import logger
+
+        parsed_path = urlparse(self.path)
+        path = parsed_path.path
+
+        logger.info("PUT %s from %s", path, self.client_address[0])
+
+        try:
+            if path.startswith("/api/schedules/"):
+                schedule_id = path.split("/")[3]
+                content_length = int(self.headers.get("Content-Length", 0))
+                data = json.loads(self.rfile.read(content_length))
+                result = update_schedule(schedule_id, data)
+                if result:
+                    self.send_json_response(result)
+                else:
+                    self.send_json_response({"status": "error", "message": "Not found"}, 404)
+            else:
+                self.send_json_response({"status": "error", "message": "Unknown PUT endpoint"}, 404)
+        except Exception as e:
+            logger.error("PUT request error: %s", e)
+            self.send_json_response({"status": "error", "message": str(e)}, 500)
 
     def serve_file_from_dir(self, directory, filename):
         """Serve a file from an arbitrary directory."""
@@ -379,6 +435,7 @@ def signal_handler(sig, frame):
     """Handle shutdown signals"""
     from service import logger
     logger.info("Received signal %d, shutting down...", sig)
+    stop_scheduler()
     stop_slideshow()
     logger.info("Pi Display Manager API service stopped")
     sys.exit(0)
