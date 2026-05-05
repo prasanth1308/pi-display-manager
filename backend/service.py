@@ -264,7 +264,7 @@ def generate_idle_image(base_image_path, custom_text):
         time_str = now.strftime("%H:%M")
         date_str = now.strftime("%A, %B %d, %Y")
 
-        time_size = max(int(bar_h * 0.52), 32)
+        time_size = max(int(bar_h * 0.40), 26)
         date_size = max(int(bar_h * 0.24), 16)
         custom_size = max(int(bar_h * 0.28), 18)
 
@@ -292,10 +292,11 @@ def generate_idle_image(base_image_path, custom_text):
         date_w, _ = _text_size(date_str, date_font)
 
         # Right side: clock stacked above date, both right-aligned
-        v_block = time_h_px + 4 + date_size
+        gap = max(int(bar_h * 0.08), 8)
+        v_block = time_h_px + gap + date_size
         time_y = bar_top + (bar_h - v_block) // 2
         _draw_text(time_str, time_font, w - pad - time_w, time_y)
-        _draw_text(date_str, date_font, w - pad - date_w, time_y + time_h_px + 4)
+        _draw_text(date_str, date_font, w - pad - date_w, time_y + time_h_px + gap)
 
         # Left side: custom text, vertically centred in bar
         if custom_text:
