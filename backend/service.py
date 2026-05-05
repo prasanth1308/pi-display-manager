@@ -9,9 +9,12 @@ import subprocess
 import sys
 import logging
 import shutil
+import threading
+import time
 import uuid
-import yt_dlp
+from datetime import datetime
 from pathlib import Path
+import yt_dlp
 
 # Global state
 slideshow_process = None
@@ -27,8 +30,32 @@ DATA_DIR = BASE_DIR / "data"
 PLAYLISTS_DIR = DATA_DIR / "playlists"
 VIDEOS_DIR = DATA_DIR / "videos"
 UPLOADS_DIR = DATA_DIR / "uploads"
+IDLE_DIR = DATA_DIR / "idle"
 PLAYLISTS_DB_FILE = BASE_DIR / "playlists.json"
+IDLE_CONFIG_FILE = BASE_DIR / "idle_config.json"
 STATIC_DIR = BASE_DIR / "frontend"
+
+# Idle screen state
+idle_process = None
+idle_thread = None
+idle_stop_event = threading.Event()
+
+# Font search paths — Linux (Pi OS) first, then macOS dev fallbacks
+_FONT_PATHS = [
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+    "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+    "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+    "/System/Library/Fonts/Helvetica.ttc",
+    "/Library/Fonts/Arial Bold.ttf",
+]
+
+
+def _find_font():
+    for p in _FONT_PATHS:
+        if Path(p).exists():
+            return p
+    return None
 
 
 def setup_logging():
@@ -52,8 +79,9 @@ def ensure_directories():
     PLAYLISTS_DIR.mkdir(parents=True, exist_ok=True)
     VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
     UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    IDLE_DIR.mkdir(parents=True, exist_ok=True)
     STATIC_DIR.mkdir(parents=True, exist_ok=True)
-    
+
     logger.info("Directory structure ensured")
 
 
@@ -95,6 +123,228 @@ def load_playlists_db():
         logger.error("Failed to load playlists database: %s", e)
         playlists_db = {"playlists": {}, "active_playlist": None}
 
+
+# ── Idle Screen ───────────────────────────────────────────────────────────────
+
+def get_idle_config():
+    """Return the current idle config dict."""
+    try:
+        if IDLE_CONFIG_FILE.exists():
+            return json.loads(IDLE_CONFIG_FILE.read_text())
+    except Exception:
+        pass
+    return {"image_path": None, "custom_text": "", "enabled": False}
+
+
+def load_idle_config():
+    """Load idle config and apply to the player."""
+    cfg = get_idle_config()
+    if cfg.get("enabled") and cfg.get("image_path"):
+        logger.info("Idle screen configured: %s", cfg["image_path"])
+    return cfg
+
+
+def save_idle_config(data):
+    """Persist idle config and return the saved dict."""
+    cfg = {
+        "image_path": data.get("image_path"),
+        "custom_text": data.get("custom_text", ""),
+        "enabled": bool(data.get("enabled", True)),
+    }
+    IDLE_CONFIG_FILE.write_text(json.dumps(cfg))
+    logger.info("Idle config saved")
+    return cfg
+
+
+def generate_idle_image(base_image_path, custom_text):
+    """
+    Composite base_image_path with a semi-transparent bottom bar showing
+    date+time (right) and custom_text (left). Returns output path or
+    base_image_path if Pillow is unavailable.
+    """
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+    except ImportError:
+        logger.warning("Pillow not installed — showing idle image without overlay")
+        return base_image_path
+
+    try:
+        img = Image.open(base_image_path).convert("RGB")
+        w, h = img.size
+
+        bar_h = max(int(h * 0.25), 80)
+        overlay = Image.new("RGBA", (w, bar_h), (0, 0, 0, 180))
+        img_rgba = img.convert("RGBA")
+        img_rgba.paste(overlay, (0, h - bar_h), overlay)
+        img = img_rgba.convert("RGB")
+
+        draw = ImageDraw.Draw(img)
+        font_path = _find_font()
+
+        def _font(size):
+            if font_path:
+                try:
+                    return ImageFont.truetype(font_path, size)
+                except Exception:
+                    pass
+            return ImageFont.load_default()
+
+        now = datetime.now()
+        time_str = now.strftime("%H:%M")
+        date_str = now.strftime("%A, %B %d, %Y")
+
+        time_size = max(int(bar_h * 0.50), 32)
+        date_size = max(int(bar_h * 0.22), 16)
+        custom_size = max(int(bar_h * 0.25), 18)
+
+        time_font = _font(time_size)
+        date_font = _font(date_size)
+        custom_font = _font(custom_size)
+
+        pad = int(w * 0.03)
+        bar_top = h - bar_h
+        white = (255, 255, 255)
+        shadow = (0, 0, 0)
+
+        def _draw_text(text, font, x, y):
+            draw.text((x + 2, y + 2), text, font=font, fill=shadow)
+            draw.text((x, y), text, font=font, fill=white)
+
+        # Measure time block
+        try:
+            time_bbox = draw.textbbox((0, 0), time_str, font=time_font)
+            time_w = time_bbox[2] - time_bbox[0]
+            time_h_px = time_bbox[3] - time_bbox[1]
+        except AttributeError:
+            time_w, time_h_px = draw.textsize(time_str, font=time_font)
+
+        time_x = w - pad - time_w
+        time_y = bar_top + (bar_h - time_h_px) // 2 - int(date_size * 0.6)
+        _draw_text(time_str, time_font, time_x, time_y)
+
+        try:
+            date_bbox = draw.textbbox((0, 0), date_str, font=date_font)
+            date_w = date_bbox[2] - date_bbox[0]
+        except AttributeError:
+            date_w, _ = draw.textsize(date_str, font=date_font)
+
+        _draw_text(date_str, date_font, w - pad - date_w, time_y + time_h_px + 4)
+
+        if custom_text:
+            try:
+                ct_bbox = draw.textbbox((0, 0), custom_text, font=custom_font)
+                ct_h = ct_bbox[3] - ct_bbox[1]
+            except AttributeError:
+                _, ct_h = draw.textsize(custom_text, font=custom_font)
+            _draw_text(custom_text, custom_font, pad, bar_top + (bar_h - ct_h) // 2)
+
+        out_path = "/tmp/pi_display_idle.jpg"
+        img.save(out_path, "JPEG", quality=92)
+        return out_path
+
+    except Exception as e:
+        logger.error("Failed to generate idle image: %s", e)
+        return base_image_path
+
+
+def _run_idle_loop(image_path, custom_text):
+    """Background thread: renders and displays idle image, refreshes every 60 s."""
+    global idle_process
+
+    logger.info("Idle screen thread started")
+    framebuffer = config.get("framebuffer", "/dev/fb0")
+
+    while not idle_stop_event.is_set():
+        idle_img = generate_idle_image(image_path, custom_text)
+
+        # Kill any existing idle or fbi process
+        if idle_process is not None:
+            try:
+                idle_process.terminate()
+                idle_process.wait(timeout=2)
+            except Exception:
+                try:
+                    idle_process.kill()
+                except Exception:
+                    pass
+            idle_process = None
+
+        try:
+            subprocess.run(["pkill", "-x", "fbi"], capture_output=True)
+        except Exception:
+            pass
+
+        cmd = [
+            "fbi",
+            "-T", "1",
+            "-d", framebuffer,
+            "--noverbose",
+            "-t", "86400",  # stay for 24 h; we kill it on next refresh
+            idle_img,
+        ]
+        try:
+            fbi_log = BASE_DIR / "fbi_error.log"
+            with open(fbi_log, "a") as f:
+                f.write(f"\n=== Idle screen started at {datetime.now()} ===\n")
+            with open(fbi_log, "a") as f:
+                idle_process = subprocess.Popen(
+                    cmd, stdin=subprocess.DEVNULL, stdout=f, stderr=f
+                )
+            logger.info("Idle fbi started (PID %d)", idle_process.pid)
+        except FileNotFoundError:
+            logger.warning("fbi not found — idle screen unavailable on this system")
+        except Exception as e:
+            logger.error("Failed to start idle fbi: %s", e)
+
+        idle_stop_event.wait(timeout=60)
+
+    # Cleanup
+    if idle_process is not None:
+        try:
+            idle_process.terminate()
+            idle_process.wait(timeout=2)
+        except Exception:
+            try:
+                idle_process.kill()
+            except Exception:
+                pass
+        idle_process = None
+    logger.info("Idle screen thread stopped")
+
+
+def start_idle_screen():
+    """Start the idle screen if configured and enabled."""
+    global idle_thread, idle_stop_event
+
+    cfg = get_idle_config()
+    if not cfg.get("enabled") or not cfg.get("image_path"):
+        return
+
+    stop_idle_screen()  # ensure clean state
+
+    idle_stop_event.clear()
+    idle_thread = threading.Thread(
+        target=_run_idle_loop,
+        args=(cfg["image_path"], cfg.get("custom_text", "")),
+        daemon=True,
+        name="idle-screen",
+    )
+    idle_thread.start()
+    logger.info("Idle screen started")
+
+
+def stop_idle_screen():
+    """Stop the idle screen thread and kill any fbi process it owns."""
+    global idle_thread, idle_stop_event
+
+    idle_stop_event.set()
+    if idle_thread and idle_thread.is_alive():
+        idle_thread.join(timeout=3)
+    idle_thread = None
+    idle_stop_event = threading.Event()  # reset for next use
+
+
+# ── Playlists DB ──────────────────────────────────────────────────────────────
 
 def save_playlists_db():
     """Save playlists database"""
@@ -140,6 +390,8 @@ def clear_framebuffer():
 def start_slideshow(playlist_id=None):
     """Start the slideshow using fbi"""
     global slideshow_process, current_playlist
+
+    stop_idle_screen()
 
     if slideshow_process is not None:
         logger.info("Slideshow already running - start request ignored")
@@ -224,6 +476,7 @@ def stop_slideshow():
             logger.error("Error running pkill: %s", str(e))
         
         clear_framebuffer()
+        start_idle_screen()
         return {"status": "not_running", "message": "Slideshow is not running (cleaned up framebuffer)"}
 
     try:
@@ -245,6 +498,7 @@ def stop_slideshow():
         logger.error("Error running pkill: %s", str(e))
 
     clear_framebuffer()
+    start_idle_screen()
 
     return {"status": "stopped", "message": "Slideshow stopped"}
 
@@ -488,7 +742,7 @@ def get_playlist_videos_list(playlist_id):
     return {"status": "success", "playlist_id": playlist_id, "videos": videos}
 
 
-def parse_multipart_form_data(content_type, body):
+def parse_multipart_form_data(content_type, body, expected_field="image"):
     """Parse multipart/form-data without using deprecated cgi module"""
     try:
         # Extract boundary from content type
@@ -538,7 +792,7 @@ def parse_multipart_form_data(content_type, body):
                             elif 'name=' in param:
                                 field_name = param.split('=', 1)[1].strip('"')
                 
-                if field_name == 'image' and filename and content:
+                if field_name == expected_field and filename and content:
                     return {'filename': filename, 'data': content}
             
             except Exception as e:
@@ -707,7 +961,9 @@ def get_playlist_videos(playlist_id):
 def start_video_playback(playlist_id):
     """Start video playback using VLC in loop mode"""
     global video_process, current_playlist
-    
+
+    stop_idle_screen()
+
     if video_process is not None:
         logger.info("Video already playing - start request ignored")
         return {"status": "error", "message": "Video is already playing"}
@@ -815,5 +1071,6 @@ def stop_video_playback():
         logger.info("Killed all VLC processes")
     except Exception as e:
         logger.error("Error running pkill: %s", str(e))
-    
+
+    start_idle_screen()
     return {"status": "stopped", "message": "Video playback stopped"}

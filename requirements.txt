@@ -4,6 +4,7 @@
 #
 # Python Packages (install via pip):
 yt-dlp>=2023.3.4
+Pillow>=9.0.0
 
 # Standard library modules used:
 # - os, json, subprocess, signal, sys, logging

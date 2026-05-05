@@ -9,7 +9,8 @@ import sys
 
 # Import service layer for initialization
 from service import (
-    setup_logging, ensure_directories, load_config, load_playlists_db, logger
+    setup_logging, ensure_directories, load_config, load_playlists_db, logger,
+    load_idle_config, start_idle_screen,
 )
 
 # Import controller for server execution
@@ -25,6 +26,9 @@ if __name__ == "__main__":
         ensure_directories()
         load_config()
         load_playlists_db()
+        cfg = load_idle_config()
+        if cfg.get("enabled") and cfg.get("image_path"):
+            start_idle_screen()
         run_server()
     except Exception as e:
         if logger:

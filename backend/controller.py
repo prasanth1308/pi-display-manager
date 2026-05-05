@@ -15,18 +15,21 @@ import sys
 from service import (
     # Core functions
     setup_logging, ensure_directories, load_config, load_playlists_db,
-    
+
     # State variables
-    logger, config, playlists_db, download_status, 
-    slideshow_process, video_process, STATIC_DIR,
-    
+    logger, config, playlists_db, download_status,
+    slideshow_process, video_process, STATIC_DIR, IDLE_DIR,
+
     # Service functions
     get_status, start_slideshow, stop_slideshow, clear_framebuffer,
     list_playlists, create_playlist, delete_playlist,
     get_playlist_images_list, get_playlist_videos_list,
     upload_image, delete_image, delete_video,
     parse_multipart_form_data, download_youtube_video,
-    start_video_playback, stop_video_playback, get_playlist_videos
+    start_video_playback, stop_video_playback, get_playlist_videos,
+
+    # Idle screen
+    get_idle_config, save_idle_config, start_idle_screen, stop_idle_screen,
 )
 
 
@@ -112,8 +115,15 @@ class APIHandler(BaseHTTPRequestHandler):
         elif path == "/api/clear":
             clear_framebuffer()
             response = {"status": "success", "message": "Framebuffer cleared"}
+        elif path == "/api/idle-config":
+            response = get_idle_config()
         elif path == "/api/health":
             response = {"status": "ok"}
+        elif path.startswith("/data/idle/"):
+            # Serve idle background image for browser preview
+            filename = path[len("/data/idle/"):]
+            self.serve_file_from_dir(IDLE_DIR, filename)
+            return
         else:
             response = {
                 "status": "error",
@@ -206,6 +216,33 @@ class APIHandler(BaseHTTPRequestHandler):
                             "message": "Download started"
                         }
             
+            elif path == "/api/idle-config":
+                content_length = int(self.headers.get("Content-Length", 0))
+                post_data = self.rfile.read(content_length)
+                data = json.loads(post_data.decode("utf-8"))
+                cfg = save_idle_config(data)
+                stop_idle_screen()
+                if cfg.get("enabled") and cfg.get("image_path"):
+                    start_idle_screen()
+                response = cfg
+
+            elif path == "/api/idle-config/upload":
+                content_type_hdr = self.headers.get("Content-Type", "")
+                if "multipart/form-data" not in content_type_hdr:
+                    response = {"status": "error", "message": "Expected multipart/form-data"}
+                else:
+                    content_length = int(self.headers.get("Content-Length", 0))
+                    body = self.rfile.read(content_length)
+                    file_info = parse_multipart_form_data(content_type_hdr, body, expected_field="file")
+                    if file_info and file_info.get("filename") and file_info.get("data"):
+                        from pathlib import Path as _Path
+                        ext = _Path(file_info["filename"]).suffix.lower()
+                        dest = IDLE_DIR / f"idle_bg{ext}"
+                        dest.write_bytes(file_info["data"])
+                        response = {"status": "success", "image_path": str(dest)}
+                    else:
+                        response = {"status": "error", "message": "No valid file found in request"}
+
             else:
                 response = {"status": "error", "message": "Unknown POST endpoint"}
                 status = 404
@@ -260,6 +297,33 @@ class APIHandler(BaseHTTPRequestHandler):
             status = 500
 
         self.send_json_response(response, status)
+
+    def serve_file_from_dir(self, directory, filename):
+        """Serve a file from an arbitrary directory."""
+        from service import logger
+        from pathlib import Path as _Path
+
+        file_path = _Path(directory) / filename
+        if not file_path.exists():
+            self.send_error(404, "File not found")
+            return
+
+        content_types = {
+            ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+            ".png": "image/png", ".gif": "image/gif",
+            ".webp": "image/webp", ".bmp": "image/bmp",
+        }
+        content_type = content_types.get(file_path.suffix.lower(), "application/octet-stream")
+        try:
+            content = file_path.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-type", content_type)
+            self.send_header("Content-Length", len(content))
+            self.end_headers()
+            self.wfile.write(content)
+        except Exception as e:
+            logger.error("Error serving file %s: %s", file_path, e)
+            self.send_error(500, "Internal server error")
 
     def serve_static_file(self, filename):
         """Serve a static file"""
