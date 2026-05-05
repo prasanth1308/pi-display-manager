@@ -51,4 +51,14 @@ const DOM = {
 
   // Idle screen
   idleSaveBtn: document.getElementById("idle-save-btn"),
+
+  // Scheduler
+  newScheduleBtn: document.getElementById("new-schedule-btn"),
+  schedulesContainer: document.getElementById("schedules-container"),
+  scheduleModal: document.getElementById("schedule-modal"),
+  scheduleNameInput: document.getElementById("schedule-name"),
+  schedulePlaylistSelect: document.getElementById("schedule-playlist"),
+  scheduleCronInput: document.getElementById("schedule-cron"),
+  createScheduleBtn: document.getElementById("create-schedule-btn"),
+  cancelScheduleBtn: document.getElementById("cancel-schedule-btn"),
 };

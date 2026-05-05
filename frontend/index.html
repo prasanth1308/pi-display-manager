@@ -158,6 +158,20 @@
             </div>
           </div>
         </section>
+
+        <!-- Scheduler Section -->
+        <section class="schedules-section">
+          <div class="section-header">
+            <h2>Scheduler</h2>
+            <button id="new-schedule-btn" class="btn btn-primary">+ New Schedule</button>
+          </div>
+          <p class="help-text">
+            Automatically start playlists at scheduled times using cron expressions.
+          </p>
+          <div id="schedules-container" class="schedules-list">
+            <div class="empty-state">No schedules yet. Click "+ New Schedule" to add one.</div>
+          </div>
+        </section>
       </main>
 
       <!-- Modal for New Playlist -->
@@ -189,6 +203,51 @@
             <button id="create-playlist-btn" class="btn btn-success">
               Create
             </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal for Schedule -->
+      <div id="schedule-modal" class="modal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3 id="schedule-modal-title">New Schedule</h3>
+            <span class="close-schedule">&times;</span>
+          </div>
+          <div class="modal-body">
+            <input type="hidden" id="schedule-id" />
+            <label for="schedule-name">Name:</label>
+            <input
+              type="text"
+              id="schedule-name"
+              class="input-field"
+              placeholder="e.g. Morning News"
+            />
+            <label for="schedule-playlist">Playlist:</label>
+            <select id="schedule-playlist" class="input-field"></select>
+            <label for="schedule-cron">Cron Expression:</label>
+            <input
+              type="text"
+              id="schedule-cron"
+              class="input-field"
+              placeholder="0 8 * * 1-5"
+            />
+            <p class="help-text">
+              5 fields: minute hour day month weekday (Sun=0, Mon=1 … Sat=6).<br />
+              Examples: <code>0 8 * * 1-5</code> = weekdays at 8:00 AM &nbsp;|&nbsp;
+              <code>30 18 * * *</code> = daily at 6:30 PM
+            </p>
+            <div class="idle-row" style="margin-top:8px;">
+              <label class="idle-label">Enabled</label>
+              <label class="toggle-switch">
+                <input type="checkbox" id="schedule-enabled" checked />
+                <span class="toggle-track"></span>
+              </label>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button id="cancel-schedule-btn" class="btn btn-secondary">Cancel</button>
+            <button id="create-schedule-btn" class="btn btn-primary">Save</button>
           </div>
         </div>
       </div>
@@ -263,6 +322,7 @@
     <script src="/frontend/scripts/managers/video.js"></script>
     <script src="/frontend/scripts/managers/playback.js"></script>
     <script src="/frontend/scripts/managers/idle.js"></script>
+    <script src="/frontend/scripts/managers/schedule.js"></script>
 
     <!-- Event handlers and initialization -->
     <script src="/frontend/scripts/events.js"></script>

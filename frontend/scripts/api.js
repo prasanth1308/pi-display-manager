@@ -82,4 +82,21 @@ const API = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     }),
+
+  // Scheduler endpoints
+  getSchedules: () => API.call("/schedules"),
+  getSchedule: (id) => API.call(`/schedules/${id}`),
+  createSchedule: (data) =>
+    API.call("/schedules", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }),
+  updateSchedule: (id, data) =>
+    API.call(`/schedules/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }),
+  deleteSchedule: (id) => API.call(`/schedules/${id}`, { method: "DELETE" }),
 };
