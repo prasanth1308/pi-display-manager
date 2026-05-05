@@ -1,7 +1,17 @@
-fastapi==0.115.0
-uvicorn[standard]==0.31.0
-sqlalchemy==2.0.36
-python-multipart==0.0.12
-apscheduler==3.10.4
-pydantic==2.9.2
-aiofiles==24.1.0
+# Pi Display Manager - Python Requirements
+# 
+# Python Version Required: 3.7+
+#
+# Python Packages (install via pip):
+yt-dlp>=2023.3.4
+Pillow>=9.0.0
+
+# Standard library modules used:
+# - os, json, subprocess, signal, sys, logging
+# - shutil, uuid, pathlib
+# - http.server, urllib.parse
+#
+# System Dependencies (install via apt):
+# - fbi (framebuffer image viewer): sudo apt-get install fbi
+# - vlc (video player): sudo apt-get install vlc
+# - python3-pip: sudo apt-get install python3-pip

@@ -1,0 +1,16 @@
+[Unit]
+Description=Pi Display Manager - Image Slideshow Service with Web Interface
+After=local-fs.target network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/larokiaraj/pi-display-manager
+ExecStart=/home/larokiaraj/pi-display-manager/venv/bin/python3 /home/larokiaraj/pi-display-manager/backend/slideshow_api.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

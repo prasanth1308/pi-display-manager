@@ -1,151 +1,398 @@
 # Pi Display Manager
 
-A lightweight web-based media presentation system for **Raspberry Pi 3 Model A+** (512MB RAM) running **Raspberry Pi OS Lite**. Displays images, videos, and PowerPoint presentations on an office TV via HDMI.
+A modern web-based image slideshow manager for Raspberry Pi with playlist support. Display images on your Pi's screen via the framebuffer using an intuitive web interface.
+
+![Version](https://img.shields.io/badge/version-2.0-blue)
+![Python](https://img.shields.io/badge/python-3.7+-green)
+![License](https://img.shields.io/badge/license-MIT-orange)
 
 ## Features
 
-- **Upload** images, videos, and presentations (PPT/PPTX/PDF) from any browser on the local network
-- **Playlists** — organize files into ordered playlists with per-item display durations
-- **Schedules** — auto-play playlists at specific times using cron expressions
-- **Remote control** — Play, Pause, Resume, Stop, Next from the web UI
-- **Physical keyboard** — arrow keys and spacebar work directly on the Pi
-- **Low resource usage** — uses `mpv` for playback, no heavy GUI stack
+- 🎨 **Modern Web Interface** - Clean, responsive UI accessible from any device
+- 📁 **Multiple Playlists** - Create and manage multiple image playlists
+- 📤 **Image Upload** - Upload images directly through the web interface
+- ▶️ **Easy Controls** - Start, stop, and manage slideshows with one click
+- 🔄 **Auto-refresh** - Real-time status updates
+- 🖼️ **Framebuffer Display** - Direct rendering to Raspberry Pi display (no X server required)
+- 🔒 **Single Playlist Playback** - Only one playlist can play at a time
+- 🗑️ **Playlist Management** - Create, delete, and organize playlists easily
 
-## Hardware Requirements
+## Requirements
 
-| Component | Spec |
-|-----------|------|
-| Device | Raspberry Pi 3 Model A+ |
-| RAM | 512 MB |
-| Storage | 8GB+ microSD recommended |
-| OS | Raspberry Pi OS Lite (Bookworm/Bullseye) |
-| Display | HDMI to TV |
-| Network | WiFi or Ethernet |
+- Raspberry Pi (any model with display output)
+- Python 3.7 or higher
+- fbi (framebuffer image viewer)
+- Network connection (for web interface access)
 
-## Quick Start (on the Pi)
+## Quick Start
 
-```bash
-git clone <repo-url> /home/pi/pi-display-manager
-cd /home/pi/pi-display-manager
-chmod +x scripts/install.sh
-./scripts/install.sh
-```
-
-Then start the server:
-```bash
-./scripts/start.sh
-```
-
-Access the web UI from any device on the same network:
-```
-http://<pi-ip-address>:8000
-```
-
-Find your Pi's IP with: `hostname -I`
-
-## Manual Installation
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) for full component details.
-
-### Dependencies
-```bash
-sudo apt-get install -y xserver-xorg x11-xserver-utils openbox xinit
-sudo apt-get install -y feh mpv libreoffice-impress poppler-utils
-sudo apt-get install -y python3 python3-pip python3-venv
-```
-
-### Python Setup
-```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
-
-### Run
-```bash
-source venv/bin/activate
-uvicorn main:app --host 0.0.0.0 --port 8000
-```
-
-## Run as a System Service (auto-start on boot)
+### 1. Clone or Download
 
 ```bash
-sudo cp scripts/pi-display.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable pi-display
-sudo systemctl start pi-display
+cd ~
+git clone <your-repo-url> pi-display-manager
+cd pi-display-manager
 ```
 
-## Supported File Types
+### 2. Install Dependencies
 
-| Type | Formats |
-|------|---------|
-| Images | `.jpg`, `.jpeg`, `.png`, `.gif`, `.bmp`, `.webp` |
-| Videos | `.mp4`, `.avi`, `.mkv`, `.mov`, `.webm` |
-| Presentations | `.pptx`, `.ppt`, `.odp`, `.pdf` |
+```bash
+sudo apt-get update
+sudo apt-get install -y fbi python3
+```
 
-> Presentations are automatically converted to PNG images on upload using LibreOffice headless.
+### 3. Run Setup Script
+
+```bash
+chmod +x setup.sh
+sudo ./setup.sh
+```
+
+The setup script will:
+
+- Create necessary directories
+- Install the systemd service
+- Enable auto-start on boot
+- Start the service
+
+### 4. Access Web Interface
+
+Open a web browser and navigate to:
+
+```
+http://<raspberry-pi-ip>:8000
+```
+
+Or if accessing locally on the Pi:
+
+```
+http://localhost:8000
+```
 
 ## Project Structure
 
 ```
 pi-display-manager/
-├── main.py                  # FastAPI app entry point
-├── database.py              # SQLite setup
-├── models.py                # Database models
-├── player.py                # Display controller (mpv)
-├── converter.py             # PPT/PDF → PNG conversion
-├── scheduler_service.py     # APScheduler integration
-├── routers/
-│   ├── files.py             # Upload/delete API
-│   ├── playlists.py         # Playlist CRUD API
-│   ├── schedules.py         # Schedule CRUD API
-│   └── control.py           # Playback control API
-├── frontend/
-│   ├── index.html           # Single-page web UI
-│   └── static/
-│       ├── css/style.css
-│       └── js/app.js
-├── scripts/
-│   ├── install.sh           # Full Pi setup script
-│   ├── start.sh             # Start server + display
-│   └── pi-display.service   # systemd service
-├── media/                   # Uploaded files (gitignored)
-├── converted/               # PPT→PNG outputs (gitignored)
-└── requirements.txt
+├── backend/                   # Backend API (MVC Architecture)
+│   ├── slideshow_api.py      # Main entry point
+│   ├── service.py            # Service layer (business logic)
+│   ├── controller.py         # Controller layer (HTTP handling)
+│   └── slideshow_api_backup.py  # Original monolithic version
+├── frontend/                  # Web interface files
+│   ├── index.html            # Main HTML page
+│   ├── style.css             # Styles
+│   └── app.js                # Frontend JavaScript
+├── data/                      # Data directory (auto-generated)
+│   ├── playlists/            # Playlist folders
+│   │   ├── default/          # Default playlist
+│   │   └── <playlist-id>/    # Other playlists
+│   ├── videos/               # Video playlists
+│   └── uploads/              # Temporary uploads
+├── config.json               # Configuration file
+├── requirements.txt          # Python dependencies
+├── setup.sh                  # Installation script
+├── pi-slideshow.service      # Systemd service file
+├── slideshow_api_old.py      # Legacy API version
+├── playlists.json            # Playlist database (auto-generated)
+├── fbi_error.log             # FBI process log (auto-generated)
+└── README.md                 # This file
 ```
 
-## Development (on Mac/PC)
+### Architecture
+
+The backend follows an **MVC (Model-View-Controller)** pattern:
+
+- **`service.py`** - Service layer containing all business logic:
+  - Slideshow management (start, stop, status)
+  - Playlist CRUD operations
+  - Image and video file management
+  - YouTube video downloading
+  - Framebuffer operations
+  - Database persistence
+
+- **`controller.py`** - Controller layer handling HTTP requests:
+  - RESTful API endpoints
+  - Request routing and validation
+  - HTTP response formatting
+  - Static file serving
+  - Error handling
+
+- **`slideshow_api.py`** - Entry point that initializes and runs the application
+
+## Configuration
+
+Edit `config.json` to customize settings:
+
+```json
+{
+  "api_port": 8000,
+  "delay": 5,
+  "framebuffer": "/dev/fb0"
+}
+```
+
+- **api_port**: Port for the web interface (default: 8000)
+- **delay**: Seconds between images (default: 5)
+- **framebuffer**: Framebuffer device path (default: /dev/fb0)
+
+After changing configuration, restart the service:
 
 ```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+sudo systemctl restart pi-slideshow
 ```
 
-> On non-Pi systems, playback controls will log commands but won't launch mpv unless it's installed.
+## Usage
 
-## API Reference
+### Web Interface
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/files/` | List all uploaded files |
-| POST | `/api/files/upload` | Upload a file |
-| DELETE | `/api/files/{id}` | Delete a file |
-| GET | `/api/playlists/` | List all playlists |
-| POST | `/api/playlists/` | Create a playlist |
-| PUT | `/api/playlists/{id}` | Update a playlist |
-| DELETE | `/api/playlists/{id}` | Delete a playlist |
-| GET | `/api/schedules/` | List all schedules |
-| POST | `/api/schedules/` | Create a schedule |
-| PUT | `/api/schedules/{id}` | Update a schedule |
-| DELETE | `/api/schedules/{id}` | Delete a schedule |
-| POST | `/api/control/play` | Play a file or playlist |
-| POST | `/api/control/pause` | Pause playback |
-| POST | `/api/control/resume` | Resume playback |
-| POST | `/api/control/stop` | Stop playback |
-| POST | `/api/control/next` | Skip to next item |
-| GET | `/api/control/status` | Get current playback status |
+1. **Create a Playlist**
+   - Click "New Playlist" button
+   - Enter a name and click "Create"
 
-Full interactive API docs: `http://<pi-ip>:8000/docs`
+2. **Upload Images**
+   - Click on a playlist to view its images
+   - Click "Upload Images"
+   - Select one or more image files
+   - Supported formats: JPG, JPEG, PNG, BMP, GIF
+
+3. **Play Slideshow**
+   - Select a playlist by clicking on it
+   - Click "Play Slideshow"
+   - The slideshow will display on the Pi's screen
+
+4. **Stop Slideshow**
+   - Click "Stop Slideshow"
+   - The screen will be cleared
+
+5. **Manage Images**
+   - Click on a playlist to view images
+   - Delete individual images as needed
+
+6. **Delete Playlist**
+   - Click the trash icon on a playlist card
+   - Confirm deletion
+   - Note: The default playlist cannot be deleted
+
+### API Endpoints
+
+The backend provides a RESTful API:
+
+#### Status
+
+- `GET /api/status` - Get current status
+
+#### Playlists
+
+- `GET /api/playlists` - List all playlists
+- `POST /api/playlists/create` - Create new playlist
+- `DELETE /api/playlists/{id}` - Delete playlist
+- `GET /api/playlists/{id}/images` - List images in playlist
+
+#### Images
+
+- `POST /api/playlists/{id}/upload` - Upload image (multipart/form-data)
+- `DELETE /api/playlists/{id}/images/{filename}` - Delete image
+
+#### Controls
+
+- `GET /api/start?playlist={id}` - Start slideshow
+- `GET /api/stop` - Stop slideshow
+- `GET /api/clear` - Clear framebuffer
+
+#### Health
+
+- `GET /api/health` - Health check
+
+### Command Line
+
+```bash
+# Check service status
+sudo systemctl status pi-slideshow
+
+# Start service
+sudo systemctl start pi-slideshow
+
+# Stop service
+sudo systemctl stop pi-slideshow
+
+# Restart service
+sudo systemctl restart pi-slideshow
+
+# View logs
+sudo journalctl -u pi-slideshow -f
+
+# Manually clear display
+sudo dd if=/dev/zero of=/dev/fb0 bs=1M count=10
+```
+
+## Troubleshooting
+
+### Service won't start
+
+```bash
+# Check logs
+sudo journalctl -u pi-slideshow -n 50
+
+# Check if port is available
+sudo netstat -tulpn | grep 8000
+
+# Verify Python script
+python3 slideshow_api.py
+```
+
+### Images not displaying
+
+```bash
+# Check if fbi is installed
+which fbi
+
+# Test fbi directly
+sudo fbi -T 1 -d /dev/fb0 /path/to/test-image.jpg
+
+# Check framebuffer permissions
+ls -l /dev/fb0
+```
+
+### Cannot access web interface
+
+```bash
+# Check if service is running
+sudo systemctl status pi-slideshow
+
+# Check firewall (if enabled)
+sudo ufw status
+
+# Test locally
+curl http://localhost:8000/api/health
+```
+
+### Images remain on screen after stop
+
+```bash
+# Clear the framebuffer manually
+sudo dd if=/dev/zero of=/dev/fb0 bs=1M count=10
+
+# Or use the API
+curl http://localhost:8000/api/clear
+```
+
+## Migration from Old Version
+
+If you have images in `/home/larokiaraj/pi` from a previous version:
+
+```bash
+# Copy images to default playlist
+sudo cp /home/larokiaraj/pi/*.{jpg,jpeg,png,gif,bmp} \
+  ~/pi-display-manager/data/playlists/default/ 2>/dev/null
+
+# Or upload them via the web interface
+```
+
+## Development
+
+### Running in Development Mode
+
+```bash
+# Stop the service
+sudo systemctl stop pi-slideshow
+
+# Run manually
+python3 slideshow_api.py
+
+# Access logs in terminal
+```
+
+### File Permissions
+
+The service runs as root to access the framebuffer. For development:
+
+```bash
+# Add user to video group (allows framebuffer access)
+sudo usermod -a -G video $USER
+
+# Reboot for changes to take effect
+sudo reboot
+```
+
+## Service Management
+
+The application runs as a systemd service for automatic startup and management.
+
+### Enable Auto-start
+
+```bash
+sudo systemctl enable pi-slideshow
+```
+
+### Disable Auto-start
+
+```bash
+sudo systemctl disable pi-slideshow
+```
+
+### Uninstall Service
+
+```bash
+sudo systemctl stop pi-slideshow
+sudo systemctl disable pi-slideshow
+sudo rm /etc/systemd/system/pi-slideshow.service
+sudo systemctl daemon-reload
+```
+
+## Security Notes
+
+- The web interface has no authentication by default
+- Only expose the service on trusted networks
+- Consider using a reverse proxy with authentication for public access
+- The service runs as root to access the framebuffer
+
+## Performance Tips
+
+- Use compressed JPEGs for faster loading
+- Recommended image size: Match your display resolution
+- Keep playlists under 100 images for best performance
+- Use appropriate delay settings in config (3-10 seconds recommended)
+
+## Supported Image Formats
+
+- JPEG (.jpg, .jpeg)
+- PNG (.png)
+- GIF (.gif)
+- BMP (.bmp)
+
+## License
+
+MIT License - Feel free to use and modify as needed.
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit pull requests or open issues.
+
+## Author
+
+Created for Raspberry Pi slideshow management with modern web interface.
+
+## Changelog
+
+### Version 2.0
+
+- ✨ Complete rewrite with web interface
+- 📁 Multiple playlist support
+- 📤 Image upload functionality
+- 🎨 Modern, responsive UI
+- 🔄 Real-time status updates
+- 🗑️ Playlist and image management
+
+### Version 1.0
+
+- Basic API for slideshow control
+- Single folder support
+- Command-line configuration
+
+## Support
+
+For issues, questions, or feature requests, please open an issue in the repository.
+
+---
+
+**Enjoy your Pi Display Manager! 🎉**
