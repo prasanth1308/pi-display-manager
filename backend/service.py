@@ -40,6 +40,12 @@ idle_process = None
 idle_thread = None
 idle_stop_event = threading.Event()
 
+# Scheduler state
+SCHEDULES_DB_FILE = BASE_DIR / "schedules.json"
+schedules_db: list = []
+scheduler_thread = None
+scheduler_stop_event = threading.Event()
+
 # Font search paths — Linux (Pi OS) first, then macOS dev fallbacks
 _FONT_PATHS = [
     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -427,6 +433,20 @@ def stop_idle_screen():
         idle_thread.join(timeout=3)
     idle_thread = None
     idle_stop_event = threading.Event()  # reset for next use
+
+
+def stop_idle_and_restore_terminal():
+    """Stop idle screen and hand the display back to the Linux console."""
+    stop_idle_screen()
+    if sys.platform == "linux":
+        # chvt 1 switches back to virtual terminal 1 (the text console),
+        # which lets the framebuffer show the TTY again.
+        try:
+            subprocess.run(["chvt", "1"], capture_output=True)
+            logger.info("Switched back to VT1 (terminal restored)")
+        except Exception as e:
+            logger.warning("chvt failed: %s", e)
+    return {"status": "stopped", "message": "Idle screen stopped, terminal restored"}
 
 
 # ── Playlists DB ──────────────────────────────────────────────────────────────
@@ -1132,7 +1152,7 @@ def start_video_playback(playlist_id):
 def stop_video_playback():
     """Stop video playback and kill all VLC processes"""
     global video_process, current_playlist
-    
+
     if video_process is None:
         logger.info("Stop requested but video not playing")
         try:
@@ -1140,9 +1160,9 @@ def stop_video_playback():
             logger.info("Killed any orphaned VLC processes")
         except Exception as e:
             logger.error("Error running pkill: %s", str(e))
-        
+
         return {"status": "not_running", "message": "Video is not playing"}
-    
+
     try:
         logger.info("Stopping video playback (PID: %d)", video_process.pid)
         video_process.terminate()
@@ -1154,7 +1174,7 @@ def stop_video_playback():
     finally:
         video_process = None
         current_playlist = None
-    
+
     try:
         subprocess.run(["pkill", "-9", "vlc"], capture_output=True)
         logger.info("Killed all VLC processes")
@@ -1163,3 +1183,169 @@ def stop_video_playback():
 
     start_idle_screen()
     return {"status": "stopped", "message": "Video playback stopped"}
+
+
+# ── Scheduler ─────────────────────────────────────────────────────────────────
+
+def _cron_field_match(field, value, min_val):
+    """Match one 5-field cron token: *, */n, n-m, comma list, or literal."""
+    if field == "*":
+        return True
+    for part in field.split(","):
+        if part.startswith("*/"):
+            step = int(part[2:])
+            if (value - min_val) % step == 0:
+                return True
+        elif "-" in part:
+            lo, hi = map(int, part.split("-", 1))
+            if lo <= value <= hi:
+                return True
+        elif int(part) == value:
+            return True
+    return False
+
+
+def _cron_matches(cron, dt):
+    """Return True if 5-field cron expression matches the given datetime."""
+    parts = cron.strip().split()
+    if len(parts) != 5:
+        return False
+    minute, hour, dom, month, dow = parts
+    # datetime.weekday(): Mon=0..Sun=6  →  cron dow: Sun=0..Sat=6
+    cron_dow = (dt.weekday() + 1) % 7
+    return (
+        _cron_field_match(minute, dt.minute, 0)
+        and _cron_field_match(hour, dt.hour, 0)
+        and _cron_field_match(dom, dt.day, 1)
+        and _cron_field_match(month, dt.month, 1)
+        and _cron_field_match(dow, cron_dow, 0)
+    )
+
+
+def load_schedules_db():
+    global schedules_db
+    try:
+        if SCHEDULES_DB_FILE.exists():
+            with open(SCHEDULES_DB_FILE) as f:
+                schedules_db = json.load(f)
+        else:
+            schedules_db = []
+        logger.info("Schedules database loaded (%d schedules)", len(schedules_db))
+    except Exception as e:
+        logger.error("Failed to load schedules database: %s", e)
+        schedules_db = []
+
+
+def save_schedules_db():
+    try:
+        with open(SCHEDULES_DB_FILE, "w") as f:
+            json.dump(schedules_db, f, indent=2)
+    except Exception as e:
+        logger.error("Failed to save schedules database: %s", e)
+
+
+def list_schedules():
+    return schedules_db
+
+
+def get_schedule(schedule_id):
+    return next((s for s in schedules_db if s["id"] == schedule_id), None)
+
+
+def create_schedule(name, playlist_id, cron, enabled=True):
+    schedule = {
+        "id": str(uuid.uuid4()),
+        "name": name,
+        "playlist_id": playlist_id,
+        "cron": cron,
+        "enabled": enabled,
+    }
+    schedules_db.append(schedule)
+    save_schedules_db()
+    logger.info("Schedule created: %s (%s)", name, cron)
+    return schedule
+
+
+def update_schedule(schedule_id, data):
+    schedule = get_schedule(schedule_id)
+    if not schedule:
+        return None
+    for key in ("name", "playlist_id", "cron", "enabled"):
+        if key in data:
+            schedule[key] = data[key]
+    save_schedules_db()
+    return schedule
+
+
+def delete_schedule(schedule_id):
+    global schedules_db
+    before = len(schedules_db)
+    schedules_db = [s for s in schedules_db if s["id"] != schedule_id]
+    if len(schedules_db) < before:
+        save_schedules_db()
+        return True
+    return False
+
+
+def _scheduler_fire_playlist(playlist_id):
+    """Stop whatever is playing and start the scheduled playlist."""
+    stop_slideshow()
+    stop_video_playback()
+    playlist = playlists_db.get("playlists", {}).get(playlist_id)
+    if not playlist:
+        logger.warning("Scheduler: playlist %s not found", playlist_id)
+        return
+    if playlist.get("type") == "video":
+        start_video_playback(playlist_id)
+    else:
+        start_slideshow(playlist_id)
+
+
+def _run_scheduler_loop():
+    logger.info("Scheduler loop started")
+    while not scheduler_stop_event.is_set():
+        # Reuse the minute-boundary sleep but driven by the scheduler stop event
+        now = datetime.now()
+        seconds_left = 60 - now.second - now.microsecond / 1_000_000
+        deadline = time.monotonic() + seconds_left
+        interrupted = False
+        while time.monotonic() < deadline:
+            remaining = deadline - time.monotonic()
+            if scheduler_stop_event.wait(timeout=min(remaining, 1.0)):
+                interrupted = True
+                break
+        if interrupted or scheduler_stop_event.is_set():
+            break
+
+        now = datetime.now()
+        for schedule in list(schedules_db):
+            if not schedule.get("enabled"):
+                continue
+            try:
+                if _cron_matches(schedule["cron"], now):
+                    logger.info("Scheduler firing: %s", schedule["name"])
+                    _scheduler_fire_playlist(schedule["playlist_id"])
+                    break  # at most one schedule fires per minute
+            except Exception as e:
+                logger.error("Scheduler error for '%s': %s", schedule.get("name"), e)
+
+    logger.info("Scheduler loop stopped")
+
+
+def start_scheduler():
+    global scheduler_thread, scheduler_stop_event
+    scheduler_stop_event.clear()
+    scheduler_thread = threading.Thread(
+        target=_run_scheduler_loop, daemon=True, name="scheduler"
+    )
+    scheduler_thread.start()
+    logger.info("Scheduler started")
+
+
+def stop_scheduler():
+    global scheduler_thread
+    scheduler_stop_event.set()
+    if scheduler_thread and scheduler_thread.is_alive():
+        scheduler_thread.join(timeout=5)
+    scheduler_thread = None
+    logger.info("Scheduler stopped")

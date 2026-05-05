@@ -11,6 +11,7 @@ import sys
 from service import (
     setup_logging, ensure_directories, load_config, load_playlists_db, logger,
     load_idle_config, start_idle_screen,
+    load_schedules_db, start_scheduler,
 )
 
 # Import controller for server execution
@@ -29,6 +30,8 @@ if __name__ == "__main__":
         cfg = load_idle_config()
         if cfg.get("enabled") and cfg.get("image_path"):
             start_idle_screen()
+        load_schedules_db()
+        start_scheduler()
         run_server()
     except Exception as e:
         if logger:

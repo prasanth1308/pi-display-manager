@@ -167,7 +167,8 @@ header h1 {
 
 /* Sections */
 .playlists-section,
-.images-section {
+.images-section,
+.schedules-section {
     background: var(--card-bg);
     border-radius: 12px;
     padding: 24px;
@@ -784,4 +785,95 @@ footer {
 
 .toggle-switch input:checked + .toggle-track::before {
     transform: translateX(20px);
+}
+
+/* ── Scheduler ─────────────────────────────────────────────── */
+.schedules-list {
+    display: grid;
+    gap: 12px;
+    margin-top: 16px;
+}
+
+.schedule-card {
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 16px;
+}
+
+.schedule-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.schedule-name {
+    font-weight: 600;
+    font-size: 1rem;
+}
+
+.schedule-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    margin-bottom: 12px;
+}
+
+.schedule-cron {
+    font-family: monospace;
+    background: var(--border-color);
+    padding: 2px 6px;
+    border-radius: 4px;
+    display: inline-block;
+}
+
+.schedule-footer {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.btn-sm {
+    padding: 4px 12px;
+    font-size: 0.8rem;
+}
+
+/* Day picker (schedule modal) */
+.day-picker {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 6px;
+}
+
+.day-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: background 0.15s, border-color 0.15s;
+    user-select: none;
+}
+
+.day-btn:has(input:checked) {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+    color: #fff;
+}
+
+.day-btn input {
+    display: none;
+}
+
+.schedule-desc {
+    font-size: 0.875rem;
+    font-weight: 500;
 }

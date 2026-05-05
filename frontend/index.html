@@ -197,7 +197,25 @@
                 class="help-text"
                 style="margin-left: 12px"
               ></span>
+            <div class="idle-row" style="margin-top:8px; gap:10px;">
+              <button id="idle-save-btn" class="btn btn-primary">Save &amp; Apply</button>
+              <button id="idle-stop-btn" class="btn btn-secondary">Stop &amp; Restore Terminal</button>
+              <span id="idle-save-status" class="help-text" style="margin-left:4px;"></span>
             </div>
+          </div>
+        </section>
+
+        <!-- Scheduler Section -->
+        <section class="schedules-section">
+          <div class="section-header">
+            <h2>Scheduler</h2>
+            <button id="new-schedule-btn" class="btn btn-primary">+ New Schedule</button>
+          </div>
+          <p class="help-text">
+            Automatically start playlists at scheduled times.
+          </p>
+          <div id="schedules-container" class="schedules-list">
+            <div class="empty-state">No schedules yet. Click "+ New Schedule" to add one.</div>
           </div>
         </section>
       </main>
@@ -231,6 +249,74 @@
             <button id="create-playlist-btn" class="btn btn-success">
               Create
             </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal for Schedule -->
+      <div id="schedule-modal" class="modal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3 id="schedule-modal-title">New Schedule</h3>
+            <span class="close-schedule">&times;</span>
+          </div>
+          <div class="modal-body">
+            <input type="hidden" id="schedule-id" />
+            <label for="schedule-name">Name:</label>
+            <input
+              type="text"
+              id="schedule-name"
+              class="input-field"
+              placeholder="e.g. Morning News"
+            />
+            <label for="schedule-playlist">Playlist:</label>
+            <select id="schedule-playlist" class="input-field"></select>
+
+            <label for="schedule-type">Repeat:</label>
+            <select
+              id="schedule-type"
+              class="input-field"
+              onchange="ScheduleManager._showTypeFields(this.value)"
+            >
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly (pick days)</option>
+              <option value="once">Once (specific date)</option>
+            </select>
+
+            <!-- Day checkboxes — shown for weekly -->
+            <div id="schedule-days-wrap" style="display:none">
+              <label>Days:</label>
+              <div class="day-picker">
+                <label class="day-btn"><input type="checkbox" name="sched-day" value="1" /> Mon</label>
+                <label class="day-btn"><input type="checkbox" name="sched-day" value="2" /> Tue</label>
+                <label class="day-btn"><input type="checkbox" name="sched-day" value="3" /> Wed</label>
+                <label class="day-btn"><input type="checkbox" name="sched-day" value="4" /> Thu</label>
+                <label class="day-btn"><input type="checkbox" name="sched-day" value="5" /> Fri</label>
+                <label class="day-btn"><input type="checkbox" name="sched-day" value="6" /> Sat</label>
+                <label class="day-btn"><input type="checkbox" name="sched-day" value="0" /> Sun</label>
+              </div>
+            </div>
+
+            <!-- Date picker — shown for once -->
+            <div id="schedule-date-wrap" style="display:none">
+              <label for="schedule-date">Date:</label>
+              <input type="date" id="schedule-date" class="input-field" />
+            </div>
+
+            <label for="schedule-time">Time:</label>
+            <input type="time" id="schedule-time" class="input-field" value="08:00" />
+
+            <div class="idle-row" style="margin-top:8px;">
+              <label class="idle-label">Enabled</label>
+              <label class="toggle-switch">
+                <input type="checkbox" id="schedule-enabled" checked />
+                <span class="toggle-track"></span>
+              </label>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button id="cancel-schedule-btn" class="btn btn-secondary">Cancel</button>
+            <button id="create-schedule-btn" class="btn btn-primary">Save</button>
           </div>
         </div>
       </div>
@@ -308,6 +394,7 @@
     <script src="/frontend/scripts/managers/video.js"></script>
     <script src="/frontend/scripts/managers/playback.js"></script>
     <script src="/frontend/scripts/managers/idle.js"></script>
+    <script src="/frontend/scripts/managers/schedule.js"></script>
 
     <!-- Event handlers and initialization -->
     <script src="/frontend/scripts/events.js"></script>

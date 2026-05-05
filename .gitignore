@@ -10,3 +10,10 @@ converted/
 dist/
 build/
 .DS_Store
+data/
+fbi_error.log
+idle_config.json
+playlists.json
+schedules.json
+slideshow_api.log
+vlc_error.log
