@@ -9,7 +9,25 @@
   <body>
     <div class="container">
       <header>
-        <h1>🖼️ Pi Display Manager</h1>
+        <div
+          style="
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+          "
+        >
+          <h1>🖼️ Pi Display Manager</h1>
+          <div style="display: flex; align-items: center; gap: 16px">
+            <span id="user-info" style="color: #718096; font-size: 14px"></span>
+            <button
+              id="logout-btn"
+              class="btn btn-secondary"
+              style="padding: 8px 16px"
+            >
+              🚪 Logout
+            </button>
+          </div>
+        </div>
         <div class="status-bar">
           <div class="status-item">
             <span class="label">Status:</span>
@@ -116,7 +134,8 @@
             <h2>🖥️ Idle Screen</h2>
           </div>
           <p class="help-text">
-            Shown on the display when no playlist is playing. The clock updates every minute.
+            Shown on the display when no playlist is playing. The clock updates
+            every minute.
           </p>
 
           <div class="idle-form">
@@ -133,25 +152,51 @@
             <div class="idle-row column">
               <label class="idle-label">Background image</label>
               <div id="idle-upload-zone" class="idle-upload-zone">
-                <div id="idle-preview-wrap" style="display:none; margin-bottom:10px;">
+                <div
+                  id="idle-preview-wrap"
+                  style="display: none; margin-bottom: 10px"
+                >
                   <img id="idle-preview-img" class="idle-preview-img" />
                 </div>
                 <div id="idle-upload-hint">
-                  <div style="font-size:28px;">🖼️</div>
+                  <div style="font-size: 28px">🖼️</div>
                   <strong>Click to upload background image</strong>
-                  <p class="help-text" style="margin:4px 0 0;">JPG, PNG, WEBP recommended</p>
+                  <p class="help-text" style="margin: 4px 0 0">
+                    JPG, PNG, WEBP recommended
+                  </p>
                 </div>
-                <input type="file" id="idle-file-input" accept=".jpg,.jpeg,.png,.webp,.bmp" style="display:none;" />
+                <input
+                  type="file"
+                  id="idle-file-input"
+                  accept=".jpg,.jpeg,.png,.webp,.bmp"
+                  style="display: none"
+                />
               </div>
             </div>
 
             <!-- Custom text -->
             <div class="idle-row column">
-              <label class="idle-label" for="idle-custom-text">Custom text (shown bottom-left)</label>
-              <input type="text" id="idle-custom-text" class="input-field"
-                placeholder="e.g. Reception • Floor 2" maxlength="80" />
+              <label class="idle-label" for="idle-custom-text"
+                >Custom text (shown bottom-left)</label
+              >
+              <input
+                type="text"
+                id="idle-custom-text"
+                class="input-field"
+                placeholder="e.g. Reception • Floor 2"
+                maxlength="80"
+              />
             </div>
 
+            <div class="idle-row" style="margin-top: 8px">
+              <button id="idle-save-btn" class="btn btn-primary">
+                Save &amp; Apply
+              </button>
+              <span
+                id="idle-save-status"
+                class="help-text"
+                style="margin-left: 12px"
+              ></span>
             <div class="idle-row" style="margin-top:8px; gap:10px;">
               <button id="idle-save-btn" class="btn btn-primary">Save &amp; Apply</button>
               <button id="idle-stop-btn" class="btn btn-secondary">Stop &amp; Restore Terminal</button>
@@ -330,6 +375,9 @@
     <footer>
       <p>Pi Display Manager v2.0 | Raspberry Pi Slideshow Manager</p>
     </footer>
+
+    <!-- Authentication (must load first) -->
+    <script src="/frontend/scripts/auth.js"></script>
 
     <!-- Core modules -->
     <script src="/frontend/scripts/config.js"></script>

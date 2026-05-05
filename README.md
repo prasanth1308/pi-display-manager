@@ -9,6 +9,7 @@ A modern web-based image slideshow manager for Raspberry Pi with playlist suppor
 ## Features
 
 - 🎨 **Modern Web Interface** - Clean, responsive UI accessible from any device
+- � **Secure Authentication** - User login with session management and configurable security
 - 📁 **Multiple Playlists** - Create and manage multiple image playlists
 - 📤 **Image Upload** - Upload images directly through the web interface
 - ▶️ **Easy Controls** - Start, stop, and manage slideshows with one click
@@ -16,6 +17,8 @@ A modern web-based image slideshow manager for Raspberry Pi with playlist suppor
 - 🖼️ **Framebuffer Display** - Direct rendering to Raspberry Pi display (no X server required)
 - 🔒 **Single Playlist Playback** - Only one playlist can play at a time
 - 🗑️ **Playlist Management** - Create, delete, and organize playlists easily
+- 📹 **Video Support** - Play videos from YouTube in fullscreen
+- 🎯 **Idle Screen** - Customizable idle screen with clock and background image
 
 ## Requirements
 
@@ -77,18 +80,38 @@ pi-display-manager/
 │   ├── slideshow_api.py      # Main entry point
 │   ├── service.py            # Service layer (business logic)
 │   ├── controller.py         # Controller layer (HTTP handling)
+│   ├── auth.py               # Authentication service
 │   └── slideshow_api_backup.py  # Original monolithic version
 ├── frontend/                  # Web interface files
-│   ├── index.html            # Main HTML page
+│   ├── index.html            # Main application page
+│   ├── login.html            # Login page
 │   ├── style.css             # Styles
-│   └── app.js                # Frontend JavaScript
+│   └── scripts/              # JavaScript modules
+│       ├── auth.js           # Authentication module
+│       ├── config.js         # Configuration
+│       ├── dom.js            # DOM references
+│       ├── state.js          # State management
+│       ├── ui.js             # UI utilities
+│       ├── api.js            # API client
+│       ├── events.js         # Event handlers
+│       ├── app.js            # Main app
+│       └── managers/         # Feature managers
+│           ├── status.js     # Status management
+│           ├── playlist.js   # Playlist management
+│           ├── content.js    # Content coordination
+│           ├── image.js      # Image management
+│           ├── video.js      # Video management
+│           ├── playback.js   # Playback control
+│           └── idle.js       # Idle screen management
 ├── data/                      # Data directory (auto-generated)
 │   ├── playlists/            # Playlist folders
 │   │   ├── default/          # Default playlist
 │   │   └── <playlist-id>/    # Other playlists
 │   ├── videos/               # Video playlists
+│   ├── idle/                 # Idle screen assets
 │   └── uploads/              # Temporary uploads
-├── config.json               # Configuration file
+├── auth.json                 # Authentication configuration
+├── config.json               # Application configuration
 ├── requirements.txt          # Python dependencies
 ├── setup.sh                  # Installation script
 ├── pi-slideshow.service      # Systemd service file
@@ -140,6 +163,128 @@ After changing configuration, restart the service:
 ```bash
 sudo systemctl restart pi-slideshow
 ```
+
+## Authentication
+
+Pi Display Manager includes user authentication to secure access to your display manager.
+
+### Default Credentials
+
+```
+Username: admin
+Password: admin123
+```
+
+⚠️ **Important**: Change the default password immediately after first login!
+
+### Managing Users
+
+Edit the `auth.json` file to manage users and authentication settings:
+
+```json
+{
+  "users": [
+    {
+      "username": "admin",
+      "password": "admin123",
+      "role": "admin"
+    }
+  ],
+  "session": {
+    "timeout": 3600,
+    "secret_key": "change-this-to-a-secure-random-string"
+  },
+  "security": {
+    "max_login_attempts": 5,
+    "lockout_duration": 300
+  }
+}
+```
+
+### Configuration Options
+
+#### Users
+
+- **username**: Login username
+- **password**: User password (plain text or SHA-256 hash)
+- **role**: User role (currently "admin" or "user")
+
+#### Session
+
+- **timeout**: Session duration in seconds (default: 3600 = 1 hour)
+- **secret_key**: Secret key for session generation (change to a random string)
+
+#### Security
+
+- **max_login_attempts**: Maximum failed login attempts before lockout (default: 5)
+- **lockout_duration**: Lockout duration in seconds after max attempts (default: 300 = 5 minutes)
+
+### Adding New Users
+
+1. Edit `auth.json`:
+
+```json
+{
+  "users": [
+    {
+      "username": "admin",
+      "password": "admin123",
+      "role": "admin"
+    },
+    {
+      "username": "user1",
+      "password": "password123",
+      "role": "user"
+    }
+  ],
+  ...
+}
+```
+
+2. Restart the service:
+
+```bash
+sudo systemctl restart pi-slideshow
+```
+
+### Using Hashed Passwords (Recommended)
+
+For better security, use SHA-256 hashed passwords:
+
+```python
+# Generate a hashed password
+import hashlib
+password = "your_secure_password"
+hashed = hashlib.sha256(password.encode()).hexdigest()
+print(hashed)
+```
+
+Then use the hash in `auth.json`:
+
+```json
+{
+  "username": "admin",
+  "password": "5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8",
+  "role": "admin"
+}
+```
+
+### Session Management
+
+- Sessions expire after the configured timeout period
+- Sessions are automatically extended on user activity
+- Logout clears the session immediately
+- All API endpoints require valid authentication
+- Login page is accessible at `/login.html`
+
+### Security Features
+
+✅ **Session-based authentication** - Secure cookie-based sessions  
+✅ **Login attempt limiting** - Prevents brute force attacks  
+✅ **Automatic lockout** - Temporary account lock after failed attempts  
+✅ **HttpOnly cookies** - Prevents XSS attacks  
+✅ **SameSite cookies** - Prevents CSRF attacks  
+✅ **Configurable timeouts** - Customizable session duration
 
 ## Usage
 
