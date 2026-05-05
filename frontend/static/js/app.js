@@ -602,10 +602,85 @@ document.querySelectorAll(".cron-preset").forEach((btn) => {
   });
 });
 
+// ── Idle Screen tab ───────────────────────────────────────────────────────────
+
+let _idleImagePath = null;
+
+async function loadIdleConfig() {
+  try {
+    const cfg = await api.get("/api/idle-config");
+    document.getElementById("idle-enabled").checked = !!cfg.enabled;
+    document.getElementById("idle-custom-text").value = cfg.custom_text || "";
+    if (cfg.image_path) {
+      _idleImagePath = cfg.image_path;
+      _showIdlePreview(cfg.image_path);
+    }
+  } catch (_) {}
+}
+
+function _showIdlePreview(imagePath) {
+  const wrap = document.getElementById("idle-preview-wrap");
+  const img = document.getElementById("idle-preview-img");
+  // Serve the file directly from /media/<filename>
+  const filename = imagePath.replace(/^media\//, "");
+  img.src = `/media/${filename}`;
+  wrap.style.display = "block";
+}
+
+// Upload zone for idle background
+const idleUploadZone = document.getElementById("idle-upload-zone");
+const idleFileInput = document.getElementById("idle-file-input");
+
+idleUploadZone.addEventListener("click", (e) => {
+  if (e.target !== idleFileInput) idleFileInput.click();
+});
+idleFileInput.addEventListener("change", async () => {
+  const file = idleFileInput.files[0];
+  if (!file) return;
+  const fd = new FormData();
+  fd.append("file", file);
+  try {
+    const r = await fetch("/api/idle-config/upload", { method: "POST", body: fd });
+    if (!r.ok) throw new Error(await r.text());
+    const data = await r.json();
+    _idleImagePath = data.image_path;
+    _showIdlePreview(data.image_path);
+    toast("Background image uploaded");
+  } catch (err) {
+    toast(`Upload failed: ${err.message}`, "error");
+  }
+  idleFileInput.value = "";
+});
+
+async function saveIdleConfig() {
+  const enabled = document.getElementById("idle-enabled").checked;
+  const customText = document.getElementById("idle-custom-text").value.trim();
+  const statusEl = document.getElementById("idle-save-status");
+
+  if (enabled && !_idleImagePath) {
+    toast("Upload a background image first", "error");
+    return;
+  }
+
+  try {
+    await api.post("/api/idle-config", {
+      enabled,
+      image_path: _idleImagePath,
+      custom_text: customText,
+    });
+    statusEl.textContent = "Saved ✓";
+    setTimeout(() => (statusEl.textContent = ""), 3000);
+    toast("Idle screen settings saved");
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 (async () => {
   await loadFiles();
   await loadPlaylists();
   await loadSchedules();
+  await loadIdleConfig();
 })();

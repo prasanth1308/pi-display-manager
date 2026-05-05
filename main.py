@@ -1,5 +1,5 @@
+import json
 import logging
-import shutil
 import uuid
 from pathlib import Path
 
@@ -22,6 +22,8 @@ app.url_map.strict_slashes = False
 MEDIA_DIR = Path("media")
 MEDIA_DIR.mkdir(exist_ok=True)
 
+IDLE_CONFIG_PATH = Path("idle_config.json")
+
 ALLOWED_TYPES: dict[str, set[str]] = {
     "image": {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"},
     "video": {".mp4", ".avi", ".mkv", ".mov", ".webm"},
@@ -41,6 +43,11 @@ def _file_type(filename: str):
 @app.route("/")
 def index():
     return send_from_directory("frontend", "index.html")
+
+
+@app.route("/media/<path:filename>")
+def serve_media(filename):
+    return send_from_directory("media", filename)
 
 
 # ── Files ─────────────────────────────────────────────────────────────────────
@@ -332,10 +339,68 @@ def status():
     return jsonify(player.get_status())
 
 
+# ── Idle Screen ───────────────────────────────────────────────────────────────
+
+def _load_idle_config() -> dict:
+    if IDLE_CONFIG_PATH.exists():
+        try:
+            return json.loads(IDLE_CONFIG_PATH.read_text())
+        except Exception:
+            pass
+    return {"image_path": None, "custom_text": "", "enabled": False}
+
+
+def _apply_idle_config(config: dict):
+    if config.get("enabled") and config.get("image_path"):
+        player.set_idle_config(config["image_path"], config.get("custom_text", ""))
+    else:
+        player.set_idle_config(None)
+
+
+@app.route("/api/idle-config")
+def get_idle_config():
+    return jsonify(_load_idle_config())
+
+
+@app.route("/api/idle-config", methods=["POST"])
+def save_idle_config():
+    data = request.json or {}
+    config = {
+        "image_path": data.get("image_path"),
+        "custom_text": data.get("custom_text", ""),
+        "enabled": bool(data.get("enabled", True)),
+    }
+    IDLE_CONFIG_PATH.write_text(json.dumps(config))
+    _apply_idle_config(config)
+    # If nothing is playing, show idle immediately
+    status = player.get_status()
+    if not status["is_playing"]:
+        player.show_idle()
+    return jsonify(config)
+
+
+@app.route("/api/idle-config/upload", methods=["POST"])
+def upload_idle_image():
+    if "file" not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+    f = request.files["file"]
+    ftype = _file_type(f.filename or "")
+    if ftype != "image":
+        return jsonify({"error": "Images only"}), 400
+    ext = Path(f.filename).suffix.lower()
+    dest = MEDIA_DIR / f"idle_bg{ext}"
+    f.save(str(dest))
+    return jsonify({"image_path": str(dest)})
+
+
 # ── Startup ───────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     database.init_db()
+    config = _load_idle_config()
+    _apply_idle_config(config)
+    if config.get("enabled") and config.get("image_path"):
+        player.show_idle()
     scheduler.load_from_db()
     scheduler.start()
     app.run(host="0.0.0.0", port=8000, threaded=True)

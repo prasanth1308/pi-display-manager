@@ -29,6 +29,7 @@
       <button class="active" data-tab="tab-files">📁 Files</button>
       <button data-tab="tab-playlists">📋 Playlists</button>
       <button data-tab="tab-schedules">🕐 Schedules</button>
+      <button data-tab="tab-settings">⚙️ Idle Screen</button>
     </nav>
 
     <!-- ── Main ── -->
@@ -218,6 +219,50 @@
 
         <div class="section-title">Active Schedules</div>
         <div id="schedule-list"></div>
+      </div>
+
+      <!-- Idle Screen Tab -->
+      <div id="tab-settings" class="tab-panel">
+        <div class="card">
+          <div class="section-title">Idle Screen</div>
+          <p style="font-size:13px;color:var(--muted);margin:0 0 16px 0">
+            Shown on the display when no playlist is playing. Updates the clock every minute.
+          </p>
+
+          <!-- Enable toggle -->
+          <div class="form-row" style="align-items:center;margin-bottom:16px">
+            <label style="font-size:14px;font-weight:500;margin-right:auto">Enable idle screen</label>
+            <label class="toggle">
+              <input type="checkbox" id="idle-enabled">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <!-- Background image upload -->
+          <div class="form-group" style="margin-bottom:16px">
+            <label>Background image</label>
+            <div id="idle-upload-zone" style="border:2px dashed var(--border);border-radius:var(--radius);padding:24px;text-align:center;cursor:pointer;background:var(--surface2)">
+              <div id="idle-preview-wrap" style="display:none;margin-bottom:12px">
+                <img id="idle-preview-img" style="max-height:120px;max-width:100%;border-radius:6px;object-fit:contain" />
+              </div>
+              <div id="idle-upload-label">
+                <div style="font-size:24px;margin-bottom:6px">🖼️</div>
+                <strong style="font-size:13px">Click to upload background image</strong>
+                <p style="font-size:12px;color:var(--muted);margin:4px 0 0">JPG, PNG, WEBP recommended</p>
+              </div>
+              <input type="file" id="idle-file-input" accept=".jpg,.jpeg,.png,.webp,.bmp" style="display:none" />
+            </div>
+          </div>
+
+          <!-- Custom text -->
+          <div class="form-group" style="margin-bottom:20px">
+            <label>Custom text (shown bottom-left)</label>
+            <input type="text" id="idle-custom-text" placeholder="e.g. Reception • Floor 2" maxlength="80" />
+          </div>
+
+          <button class="btn btn-primary" onclick="saveIdleConfig()">Save &amp; Apply</button>
+          <span id="idle-save-status" style="margin-left:12px;font-size:13px;color:var(--muted)"></span>
+        </div>
       </div>
     </main>
 
