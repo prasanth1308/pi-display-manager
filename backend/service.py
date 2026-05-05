@@ -640,7 +640,7 @@ def download_youtube_video(playlist_id, video_url, download_id):
         output_template = str(playlist_dir / "%(title)s.%(ext)s")
         
         ydl_opts = {
-            'format': 'bestvideo[height<=720]+bestaudio/best[height<=720]',
+            'format': 'bestvideo[height<=1080][vcodec^=avc1]+bestaudio[acodec^=mp4a]/best[height<=1080]',
             'outtmpl': output_template,
             'merge_output_format': 'mp4',
             'quiet': False,
@@ -733,6 +733,8 @@ def start_video_playback(playlist_id):
                 "sudo", "-u", "larokiaraj",
                 "cvlc",
                 "--fullscreen",
+                "--avcodec-hw=mmal",
+                "--network-caching=1000",
                 "--loop",
                 "--no-video-title-show",
                 "--no-audio",
@@ -743,6 +745,8 @@ def start_video_playback(playlist_id):
             cmd = [
                 "cvlc",
                 "--fullscreen",
+                 "--avcodec-hw=mmal",
+                "--network-caching=1000",
                 "--loop",
                 "--no-video-title-show",
                 "--no-audio",
