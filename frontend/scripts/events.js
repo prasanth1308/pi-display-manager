@@ -25,6 +25,7 @@ const EventListeners = {
 
     // Content controls
     DOM.uploadImageBtn.addEventListener("click", () => DOM.fileInput.click());
+    DOM.uploadPdfBtn.addEventListener("click", () => DOM.pdfFileInput.click());
     DOM.downloadVideoTriggerBtn.addEventListener("click", () =>
       VideoManager.showDownloadModal(),
     );
@@ -38,8 +39,15 @@ const EventListeners = {
       VideoManager.hideDownloadModal(),
     );
 
-    // File upload
+    // File uploads
     DOM.fileInput.addEventListener("change", (e) => ImageManager.upload(e));
+    DOM.pdfFileInput.addEventListener("change", (e) => PdfManager.upload(e));
+
+    // Show/hide PDF page duration field based on playlist type selection
+    DOM.playlistTypeSelect.addEventListener("change", () => {
+      document.getElementById("pdf-duration-group").style.display =
+        DOM.playlistTypeSelect.value === CONTENT_TYPES.PDF ? "block" : "none";
+    });
 
     // Modal interactions
     DOM.playlistModal.addEventListener("click", (e) => {

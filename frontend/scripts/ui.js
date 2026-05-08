@@ -73,12 +73,16 @@ const UI = {
    * Show/hide content buttons based on playlist type
    */
   updateContentButtons(playlistType) {
+    DOM.uploadImageBtn.style.display = "none";
+    DOM.downloadVideoTriggerBtn.style.display = "none";
+    DOM.uploadPdfBtn.style.display = "none";
+
     if (playlistType === CONTENT_TYPES.VIDEO) {
-      DOM.uploadImageBtn.style.display = "none";
       DOM.downloadVideoTriggerBtn.style.display = "inline-block";
+    } else if (playlistType === CONTENT_TYPES.PDF) {
+      DOM.uploadPdfBtn.style.display = "inline-block";
     } else {
       DOM.uploadImageBtn.style.display = "inline-block";
-      DOM.downloadVideoTriggerBtn.style.display = "none";
     }
   },
 

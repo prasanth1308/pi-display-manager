@@ -9,6 +9,7 @@ const DOM = {
   stopBtn: document.getElementById("stop-btn"),
   newPlaylistBtn: document.getElementById("new-playlist-btn"),
   uploadImageBtn: document.getElementById("upload-image-btn"),
+  uploadPdfBtn: document.getElementById("upload-pdf-btn"),
   downloadVideoTriggerBtn: document.getElementById(
     "download-video-trigger-btn",
   ),
@@ -20,6 +21,7 @@ const DOM = {
 
   // Inputs
   fileInput: document.getElementById("file-input"),
+  pdfFileInput: document.getElementById("pdf-file-input"),
   playlistNameInput: document.getElementById("playlist-name"),
   playlistTypeSelect: document.getElementById("playlist-type"),
   videoUrlInput: document.getElementById("video-url"),

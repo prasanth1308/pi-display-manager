@@ -33,6 +33,7 @@ from service import (
     upload_image, delete_image, delete_video,
     parse_multipart_form_data, download_youtube_video,
     start_video_playback, stop_video_playback, get_playlist_videos,
+    upload_pdf, update_playlist_settings,
 
     # Idle screen
     get_idle_config, save_idle_config, start_idle_screen, stop_idle_screen,
@@ -299,8 +300,9 @@ class APIHandler(BaseHTTPRequestHandler):
                 post_data = self.rfile.read(content_length)
                 data = json.loads(post_data.decode('utf-8'))
                 name = data.get("name", "Untitled Playlist")
-                playlist_type = data.get("type", "image")  # "image" or "video"
-                response = create_playlist(name, playlist_type)
+                playlist_type = data.get("type", "image")
+                page_duration = data.get("page_duration", 10)
+                response = create_playlist(name, playlist_type, page_duration)
             
             elif path.startswith("/api/playlists/") and "/upload" in path:
                 # Upload image to playlist
@@ -326,6 +328,21 @@ class APIHandler(BaseHTTPRequestHandler):
                 else:
                     response = {"status": "error", "message": "Content must be multipart/form-data"}
             
+            elif path.startswith("/api/playlists/") and "/upload-pdf" in path:
+                # Upload PDF to a PDF playlist
+                playlist_id = path.split("/")[3]
+                content_type_hdr = self.headers.get('Content-Type', '')
+                if 'multipart/form-data' in content_type_hdr:
+                    content_length = int(self.headers.get('Content-Length', 0))
+                    body = self.rfile.read(content_length)
+                    file_info = parse_multipart_form_data(content_type_hdr, body, expected_field="pdf")
+                    if file_info and file_info.get('filename') and file_info.get('data'):
+                        response = upload_pdf(playlist_id, file_info['data'], file_info['filename'])
+                    else:
+                        response = {"status": "error", "message": "No valid PDF found in request"}
+                else:
+                    response = {"status": "error", "message": "Content must be multipart/form-data"}
+
             elif path.startswith("/api/playlists/") and "/download" in path:
                 # Download video from YouTube
                 playlist_id = path.split("/")[3]
@@ -494,6 +511,14 @@ class APIHandler(BaseHTTPRequestHandler):
                     self.send_json_response(result)
                 else:
                     self.send_json_response({"status": "error", "message": "Not found"}, 404)
+            elif path.startswith("/api/playlists/"):
+                playlist_id = path.split("/")[3]
+                content_length = int(self.headers.get("Content-Length", 0))
+                data = json.loads(self.rfile.read(content_length))
+                if "page_duration" in data:
+                    self.send_json_response(update_playlist_settings(playlist_id, data["page_duration"]))
+                else:
+                    self.send_json_response({"status": "error", "message": "Nothing to update"}, 400)
             else:
                 self.send_json_response({"status": "error", "message": "Unknown PUT endpoint"}, 404)
         except Exception as e:

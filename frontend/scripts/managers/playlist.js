@@ -45,6 +45,9 @@ const PlaylistManager = {
     card.className = "playlist-card";
     card.dataset.playlistId = playlist.id;
     card.dataset.playlistType = playlist.type || CONTENT_TYPES.IMAGE;
+    if (playlist.page_duration != null) {
+      card.dataset.pageDuration = playlist.page_duration;
+    }
 
     if (playlist.is_active) card.classList.add("active");
     if (playlist.is_playing) card.classList.add("playing");
@@ -56,13 +59,16 @@ const PlaylistManager = {
       badges.push('<span class="mini-badge active">✓ Active</span>');
 
     const isVideo = playlist.type === CONTENT_TYPES.VIDEO;
+    const isPdf = playlist.type === CONTENT_TYPES.PDF;
     const config = PLAYLIST_TYPE_CONFIG[playlist.type || CONTENT_TYPES.IMAGE];
     const contentCount = isVideo
       ? playlist.video_count || 0
       : playlist.image_count || 0;
     const contentLabel = isVideo
       ? `${contentCount} video${contentCount !== 1 ? "s" : ""}`
-      : `${contentCount} image${contentCount !== 1 ? "s" : ""}`;
+      : isPdf
+        ? `${contentCount} page${contentCount !== 1 ? "s" : ""}`
+        : `${contentCount} image${contentCount !== 1 ? "s" : ""}`;
 
     const typeBadge = `<span class="type-badge ${playlist.type || "image"}">${config.badge}</span>`;
 
@@ -85,12 +91,11 @@ const PlaylistManager = {
     // Click to select and view content
     card.addEventListener("click", (e) => {
       if (!e.target.classList.contains("delete-playlist")) {
-        this.select(playlist.id, playlist.type || CONTENT_TYPES.IMAGE);
-        ContentManager.show(
-          playlist.id,
-          playlist.name,
-          playlist.type || CONTENT_TYPES.IMAGE,
-        );
+        const type = playlist.type || CONTENT_TYPES.IMAGE;
+        this.select(playlist.id, type);
+        ContentManager.show(playlist.id, playlist.name, type, {
+          page_duration: playlist.page_duration,
+        });
       }
     });
 
@@ -124,6 +129,8 @@ const PlaylistManager = {
    */
   showCreateModal() {
     DOM.playlistNameInput.value = "";
+    DOM.playlistTypeSelect.value = "image";
+    document.getElementById("pdf-duration-group").style.display = "none";
     DOM.playlistModal.classList.add("show");
     DOM.playlistNameInput.focus();
   },
@@ -141,6 +148,10 @@ const PlaylistManager = {
   async create() {
     const name = DOM.playlistNameInput.value.trim();
     const type = DOM.playlistTypeSelect.value;
+    const pageDuration =
+      type === CONTENT_TYPES.PDF
+        ? parseInt(document.getElementById("pdf-page-duration").value) || 10
+        : null;
 
     if (!name) {
       UI.showToast("Please enter a playlist name", TOAST_TYPES.WARNING);
@@ -149,15 +160,18 @@ const PlaylistManager = {
 
     UI.showLoading();
 
-    const data = await API.createPlaylist(name, type);
+    const data = await API.createPlaylist(name, type, pageDuration);
 
     UI.hideLoading();
 
     if (data && data.status === "success") {
-      UI.showToast(
-        `${type === CONTENT_TYPES.VIDEO ? "Video" : "Image"} playlist created successfully`,
-        TOAST_TYPES.SUCCESS,
-      );
+      const typeLabel =
+        type === CONTENT_TYPES.VIDEO
+          ? "Video"
+          : type === CONTENT_TYPES.PDF
+            ? "PDF"
+            : "Image";
+      UI.showToast(`${typeLabel} playlist created successfully`, TOAST_TYPES.SUCCESS);
       this.hideCreateModal();
       this.load();
     } else {

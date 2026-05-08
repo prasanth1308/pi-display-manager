@@ -506,6 +506,9 @@ def start_slideshow(playlist_id=None):
 
     try:
         delay = config.get("delay", 5)
+        playlist_info = playlists_db["playlists"].get(playlist_id, {})
+        if playlist_info.get("type") == "pdf":
+            delay = playlist_info.get("page_duration", delay)
         framebuffer = config.get("framebuffer", "/dev/fb0")
 
         cmd = [
@@ -613,31 +616,99 @@ def get_status():
     }
 
 
-def create_playlist(name, playlist_type="image"):
+def create_playlist(name, playlist_type="image", page_duration=10):
     """Create a new playlist"""
     playlist_id = str(uuid.uuid4())[:8]
-    
+
     # Determine base directory based on type
     if playlist_type == "video":
         base_dir = VIDEOS_DIR
     else:
         base_dir = PLAYLISTS_DIR
-    
+
     playlist_dir = base_dir / playlist_id
     playlist_dir.mkdir(exist_ok=True)
-    
-    playlists_db["playlists"][playlist_id] = {
+
+    entry = {
         "name": name,
         "id": playlist_id,
         "type": playlist_type,
-        "created": __import__('datetime').datetime.now().isoformat(),
+        "created": datetime.now().isoformat(),
         "image_count": 0,
-        "video_count": 0 if playlist_type == "video" else None
+        "video_count": 0 if playlist_type == "video" else None,
     }
+    if playlist_type == "pdf":
+        entry["page_duration"] = int(page_duration) if page_duration else 10
+        entry["pdf_filename"] = None
+
+    playlists_db["playlists"][playlist_id] = entry
     save_playlists_db()
-    
+
     logger.info("Created %s playlist: %s (ID: %s)", playlist_type, name, playlist_id)
     return {"status": "success", "playlist_id": playlist_id, "message": "Playlist created"}
+
+
+def update_playlist_settings(playlist_id, page_duration):
+    """Update mutable settings on an existing playlist (currently: page_duration for PDF)."""
+    if playlist_id not in playlists_db["playlists"]:
+        return {"status": "error", "message": "Playlist not found"}
+    if playlists_db["playlists"][playlist_id].get("type") != "pdf":
+        return {"status": "error", "message": "page_duration is only applicable to PDF playlists"}
+    playlists_db["playlists"][playlist_id]["page_duration"] = max(1, int(page_duration))
+    save_playlists_db()
+    logger.info("Updated page_duration for playlist %s to %ds", playlist_id, page_duration)
+    return {"status": "success", "page_duration": playlists_db["playlists"][playlist_id]["page_duration"]}
+
+
+def upload_pdf(playlist_id, pdf_data, filename):
+    """Upload a PDF, convert its pages to PNG images, and store them in the playlist folder."""
+    if playlist_id not in playlists_db["playlists"]:
+        return {"status": "error", "message": "Playlist not found"}
+
+    if playlists_db["playlists"][playlist_id].get("type") != "pdf":
+        return {"status": "error", "message": "Not a PDF playlist"}
+
+    playlist_dir = PLAYLISTS_DIR / playlist_id
+
+    # Remove old pages and PDFs
+    for old_file in playlist_dir.iterdir():
+        if old_file.suffix.lower() in {".png", ".pdf"}:
+            old_file.unlink()
+
+    pdf_path = playlist_dir / filename
+    pdf_path.write_bytes(pdf_data)
+
+    try:
+        page_prefix = str(playlist_dir / "page")
+        result = subprocess.run(
+            ["pdftoppm", "-r", "150", "-png", str(pdf_path), page_prefix],
+            capture_output=True,
+            timeout=120,
+        )
+        if result.returncode != 0:
+            logger.error("pdftoppm error: %s", result.stderr.decode())
+            return {"status": "error", "message": "PDF conversion failed. Is poppler-utils installed?"}
+
+        pages = sorted(playlist_dir.glob("page-*.png"))
+        page_count = len(pages)
+
+        if page_count == 0:
+            return {"status": "error", "message": "No pages could be extracted from PDF"}
+
+        playlists_db["playlists"][playlist_id]["image_count"] = page_count
+        playlists_db["playlists"][playlist_id]["pdf_filename"] = filename
+        save_playlists_db()
+
+        logger.info("PDF uploaded: %s (%d pages) for playlist %s", filename, page_count, playlist_id)
+        return {"status": "success", "page_count": page_count, "filename": filename}
+
+    except FileNotFoundError:
+        return {"status": "error", "message": "pdftoppm not found. Run: sudo apt install poppler-utils"}
+    except subprocess.TimeoutExpired:
+        return {"status": "error", "message": "PDF conversion timed out (too many pages?)"}
+    except Exception as e:
+        logger.error("PDF upload error: %s", e)
+        return {"status": "error", "message": str(e)}
 
 
 def delete_playlist(playlist_id):
@@ -680,24 +751,29 @@ def list_playlists():
     playlists = []
     for playlist_id, info in playlists_db.get("playlists", {}).items():
         plist_type = info.get("type", "image")
-        
+
         if plist_type == "video":
             videos = get_playlist_videos(playlist_id)
             item_count = len(videos)
         else:
             images = get_playlist_images(playlist_id)
             item_count = len(images)
-        
-        playlists.append({
+
+        entry = {
             "id": playlist_id,
             "name": info["name"],
             "type": plist_type,
-            "image_count": item_count if plist_type == "image" else 0,
+            "image_count": item_count if plist_type != "video" else 0,
             "video_count": item_count if plist_type == "video" else 0,
             "created": info.get("created", ""),
             "is_active": playlists_db.get("active_playlist") == playlist_id,
-            "is_playing": current_playlist == playlist_id
-        })
+            "is_playing": current_playlist == playlist_id,
+        }
+        if plist_type == "pdf":
+            entry["page_duration"] = info.get("page_duration", 10)
+            entry["pdf_filename"] = info.get("pdf_filename")
+
+        playlists.append(entry)
     return playlists
 
 

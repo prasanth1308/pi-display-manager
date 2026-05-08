@@ -7,7 +7,7 @@ const ContentManager = {
   /**
    * Show content section for a playlist
    */
-  async show(playlistId, playlistName, playlistType) {
+  async show(playlistId, playlistName, playlistType, meta = {}) {
     DOM.selectedPlaylistName.textContent = playlistName;
     DOM.imagesSection.style.display = "block";
 
@@ -18,6 +18,8 @@ const ContentManager = {
 
     if (playlistType === CONTENT_TYPES.VIDEO) {
       await VideoManager.load(playlistId);
+    } else if (playlistType === CONTENT_TYPES.PDF) {
+      await PdfManager.load(playlistId, meta.page_duration ?? 10);
     } else {
       await ImageManager.load(playlistId);
     }

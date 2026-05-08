@@ -27,11 +27,15 @@ const API = {
 
   // Playlist endpoints
   getPlaylists: () => API.call("/playlists"),
-  createPlaylist: (name, type) =>
+  createPlaylist: (name, type, pageDuration = null) =>
     API.call("/playlists/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, type }),
+      body: JSON.stringify(
+        pageDuration !== null
+          ? { name, type, page_duration: pageDuration }
+          : { name, type },
+      ),
     }),
   deletePlaylist: (playlistId) =>
     API.call(`/playlists/${playlistId}`, { method: "DELETE" }),
@@ -51,6 +55,20 @@ const API = {
         method: "DELETE",
       },
     ),
+
+  updatePlaylist: (playlistId, data) =>
+    API.call(`/playlists/${playlistId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }),
+
+  // PDF endpoints
+  uploadPdf: (playlistId, formData) =>
+    API.call(`/playlists/${playlistId}/upload-pdf`, {
+      method: "POST",
+      body: formData,
+    }),
 
   // Video endpoints
   getPlaylistVideos: (playlistId) =>
