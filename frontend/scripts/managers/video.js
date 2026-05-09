@@ -159,12 +159,20 @@ const VideoManager = {
 
       AppState.stopPolling();
 
-      // Refresh video list and playlists
-      this.load(AppState.selectedPlaylistId);
-      PlaylistManager.load();
+      // Check if downscaling is needed
+      if (data.downscale_id) {
+        UI.showProgress("Processing video...", 0);
+        AppState.startPolling(() =>
+          this.pollDownscaleStatus(data.downscale_id),
+        );
+      } else {
+        // Refresh video list and playlists
+        this.load(AppState.selectedPlaylistId);
+        PlaylistManager.load();
 
-      // Hide progress after delay
-      setTimeout(() => UI.hideProgress(), CONFIG.PROGRESS_HIDE_DELAY);
+        // Hide progress after delay
+        setTimeout(() => UI.hideProgress(), CONFIG.PROGRESS_HIDE_DELAY);
+      }
     } else if (data.status === "error") {
       UI.showProgress(`Error: ${data.message || "Download failed"}`, 0);
       UI.showToast("Download failed", TOAST_TYPES.ERROR);
@@ -172,6 +180,56 @@ const VideoManager = {
       AppState.stopPolling();
 
       // Hide progress after delay
+      setTimeout(() => UI.hideProgress(), CONFIG.PROGRESS_HIDE_DELAY);
+    }
+  },
+
+  /**
+   * Poll downscale status
+   */
+  async pollDownscaleStatus(downscaleId) {
+    const data = await API.getDownscaleStatus(downscaleId);
+
+    if (!data) {
+      AppState.stopPolling();
+      UI.hideProgress();
+      return;
+    }
+
+    if (data.status === "checking") {
+      UI.showProgress(data.message || "Checking video...", data.progress || 0);
+    } else if (data.status === "downscaling") {
+      UI.showProgress(
+        data.message || "Downscaling video...",
+        data.progress || 0,
+      );
+    } else if (data.status === "completed") {
+      UI.showProgress("Processing complete!", 100);
+      AppState.stopPolling();
+
+      // Refresh video list and playlists
+      this.load(AppState.selectedPlaylistId);
+      PlaylistManager.load();
+
+      setTimeout(() => UI.hideProgress(), CONFIG.PROGRESS_HIDE_DELAY);
+    } else if (data.status === "skipped") {
+      UI.showProgress(data.message || "No downscaling needed", 100);
+      AppState.stopPolling();
+
+      // Refresh video list and playlists
+      this.load(AppState.selectedPlaylistId);
+      PlaylistManager.load();
+
+      setTimeout(() => UI.hideProgress(), CONFIG.PROGRESS_HIDE_DELAY);
+    } else if (data.status === "error") {
+      UI.showProgress(data.message || "Processing failed", 0);
+      UI.showToast("Video processing failed", TOAST_TYPES.WARNING);
+      AppState.stopPolling();
+
+      // Still refresh the list in case video was saved
+      this.load(AppState.selectedPlaylistId);
+      PlaylistManager.load();
+
       setTimeout(() => UI.hideProgress(), CONFIG.PROGRESS_HIDE_DELAY);
     }
   },

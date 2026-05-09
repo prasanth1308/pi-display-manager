@@ -132,9 +132,17 @@ const ImageManager = {
 
           if (data && data.status === "success") {
             UI.showProgress("Upload complete!", 100, "Processing...");
-            setTimeout(() => {
-              UI.hideProgress();
-            }, 1000);
+
+            // Poll downscale progress if downscale_id exists
+            if (data.downscale_id) {
+              AppState.startPolling(() =>
+                this.pollDownscaleStatus(data.downscale_id),
+              );
+            } else {
+              setTimeout(() => {
+                UI.hideProgress();
+              }, 1000);
+            }
             successCount++;
           } else {
             UI.hideProgress();
@@ -244,6 +252,56 @@ const ImageManager = {
         data?.message || "Failed to update image",
         TOAST_TYPES.ERROR,
       );
+    }
+  },
+
+  /**
+   * Poll downscale status
+   */
+  async pollDownscaleStatus(downscaleId) {
+    const data = await API.getDownscaleStatus(downscaleId);
+
+    if (!data) {
+      AppState.stopPolling();
+      UI.hideProgress();
+      return;
+    }
+
+    if (data.status === "checking") {
+      UI.showProgress(data.message || "Checking video...", data.progress || 0);
+    } else if (data.status === "downscaling") {
+      UI.showProgress(
+        data.message || "Downscaling video...",
+        data.progress || 0,
+      );
+    } else if (data.status === "completed") {
+      UI.showProgress("Processing complete!", 100);
+      AppState.stopPolling();
+
+      // Refresh video list and playlists
+      await VideoManager.load(AppState.selectedPlaylistId);
+      PlaylistManager.load();
+
+      setTimeout(() => UI.hideProgress(), CONFIG.PROGRESS_HIDE_DELAY);
+    } else if (data.status === "skipped") {
+      UI.showProgress(data.message || "No downscaling needed", 100);
+      AppState.stopPolling();
+
+      // Refresh video list and playlists
+      await VideoManager.load(AppState.selectedPlaylistId);
+      PlaylistManager.load();
+
+      setTimeout(() => UI.hideProgress(), CONFIG.PROGRESS_HIDE_DELAY);
+    } else if (data.status === "error") {
+      UI.showProgress(data.message || "Processing failed", 0);
+      UI.showToast("Video processing failed", TOAST_TYPES.WARNING);
+      AppState.stopPolling();
+
+      // Still refresh in case video was saved
+      await VideoManager.load(AppState.selectedPlaylistId);
+      PlaylistManager.load();
+
+      setTimeout(() => UI.hideProgress(), CONFIG.PROGRESS_HIDE_DELAY);
     }
   },
 };
