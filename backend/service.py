@@ -816,8 +816,12 @@ def upload_video(playlist_id, temp_file_path, filename):
             Path(temp_file_path).unlink()
         return {"status": "error", "message": "Invalid video file type"}
     
-    # Save file to playlist folder
-    playlist_dir = PLAYLISTS_DIR / playlist_id
+    # Save file to video playlist folder (VIDEOS_DIR, not PLAYLISTS_DIR)
+    playlist_dir = VIDEOS_DIR / playlist_id
+    
+    # Ensure directory exists
+    playlist_dir.mkdir(parents=True, exist_ok=True)
+    
     file_path = playlist_dir / filename
     
     # Handle duplicate names
