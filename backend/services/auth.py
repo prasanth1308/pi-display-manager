@@ -186,35 +186,3 @@ def authenticate_user(username, password):
     else:
         record_failed_attempt(username)
         return False, "Invalid username or password"
-
-
-    """Decorator for protecting API endpoints"""
-    def wrapper(self, *args, **kwargs):
-        # Get session token from cookie
-        cookie_header = self.headers.get('Cookie', '')
-        session_token = None
-        
-        for cookie in cookie_header.split(';'):
-            cookie = cookie.strip()
-            if cookie.startswith('session_token='):
-                session_token = cookie.split('=', 1)[1]
-                break
-        
-        # Validate session
-        user_info = validate_session(session_token)
-        
-        if not user_info:
-            self.send_response(401)
-            self.send_header('Content-Type', 'application/json')
-            self.end_headers()
-            response = json.dumps({'status': 'error', 'message': 'Unauthorized. Please login.'})
-            self.wfile.write(response.encode())
-            return
-        
-        # Attach user info to handler
-        self.current_user = user_info
-        
-        # Call the original handler
-        return handler_method(self, *args, **kwargs)
-    
-    return wrapper

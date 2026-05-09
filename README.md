@@ -77,11 +77,13 @@ http://localhost:8000
 ```
 pi-display-manager/
 ├── backend/                   # Backend API (MVC Architecture)
-│   ├── slideshow_api.py      # Main entry point
-│   ├── service.py            # Service layer (business logic)
-│   ├── controller.py         # Controller layer (HTTP handling)
-│   ├── auth.py               # Authentication service
-│   └── slideshow_api_backup.py  # Original monolithic version
+│   ├── slideshow_api.py      # Main entry point (FastAPI)
+│   ├── controllers/          # Controller layer
+│   │   └── controller_fastapi.py  # FastAPI controller
+│   ├── services/             # Service layer (business logic)
+│   │   ├── service.py        # Core business logic
+│   │   └── auth.py           # Authentication service
+│   └── tests/                # Test files
 ├── frontend/                  # Web interface files
 │   ├── index.html            # Main application page
 │   ├── login.html            # Login page
@@ -133,14 +135,16 @@ The backend follows an **MVC (Model-View-Controller)** pattern:
   - Framebuffer operations
   - Database persistence
 
-- **`controller.py`** - Controller layer handling HTTP requests:
-  - RESTful API endpoints
-  - Request routing and validation
-  - HTTP response formatting
-  - Static file serving
-  - Error handling
+- **`auth.py`** - Authentication service handling user login and session management
 
-- **`slideshow_api.py`** - Entry point that initializes and runs the application
+- **`controller_fastapi.py`** - FastAPI controller with modern REST API:
+  - RESTful API endpoints with automatic documentation
+  - Request routing with type validation
+  - Dependency injection for authentication
+  - Static file serving
+  - Comprehensive error handling
+
+- **`slideshow_api.py`** - Entry point that initializes and runs the FastAPI application
 
 ## Configuration
 
@@ -382,7 +386,7 @@ sudo journalctl -u pi-slideshow -n 50
 sudo netstat -tulpn | grep 8000
 
 # Verify Python script
-python3 slideshow_api.py
+python3 slideshow_api_fastapi.py
 ```
 
 ### Images not displaying
@@ -442,7 +446,7 @@ sudo cp /home/larokiaraj/pi/*.{jpg,jpeg,png,gif,bmp} \
 sudo systemctl stop pi-slideshow
 
 # Run manually
-python3 slideshow_api.py
+python3 slideshow_api_fastapi.py
 
 # Access logs in terminal
 ```
