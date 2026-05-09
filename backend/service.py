@@ -1265,18 +1265,14 @@ def downscale_video_to_1080p(video_path, downscale_id=None):
         # Try hardware-accelerated encoding first (h264_omx for Raspberry Pi)
         ffmpeg_cmd = [
             'ffmpeg', '-i', str(video_path),
-            '-threads', '2',
             '-vf', 'scale=-2:1080',  # Maintain aspect ratio, height=1080
             '-c:v', 'h264_v4l2m2m',  # Hardware codec for Raspberry Pi
-            '-b:v', '3M',  # 3Mbps bitrate for better quality
-            '-bufsize', '5000k',  # Buffer size
-            '-r', '30',  # Fix frame rate to 30fps
-            '-c:a', 'aac',  # Re-encode audio to AAC for compatibility
-            '-b:a', '128k',  # Audio bitrate
-            '-ar', '44100',  # Audio sample rate
-            '-ac', '2',  # Stereo audio
-            '-max_muxing_queue_size', '1024',  # Increase queue size
-            '-progress', 'pipe:1',  # Output progress to stdout
+            '-b:v', '2500k',  # 2.5Mbps bitrate for better quality
+            '-bufsize', '3000k',  # Buffer size
+            '-pix_fmt', 'yuv420p',
+            '-an',  # Disable audio completely
+            '-progress', 'pipe:1',
+            '-max_muxing_queue_size', '256',  # Increase queue size
             '-y',  # Overwrite output
             str(temp_output)
         ]
