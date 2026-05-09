@@ -652,7 +652,7 @@ def create_playlist(name, playlist_type="image", delay=5):
         base_dir = PLAYLISTS_DIR
     
     playlist_dir = base_dir / playlist_id
-    playlist_dir.mkdir(exist_ok=True)
+    playlist_dir.mkdir(exist_ok=True, mode=0o755)
     
     playlists_db["playlists"][playlist_id] = {
         "name": name,
@@ -819,8 +819,8 @@ def upload_video(playlist_id, temp_file_path, filename):
     # Save file to video playlist folder (VIDEOS_DIR, not PLAYLISTS_DIR)
     playlist_dir = VIDEOS_DIR / playlist_id
     
-    # Ensure directory exists
-    playlist_dir.mkdir(parents=True, exist_ok=True)
+    # Ensure directory exists with proper permissions
+    playlist_dir.mkdir(parents=True, exist_ok=True, mode=0o755)
     
     file_path = playlist_dir / filename
     
@@ -834,6 +834,9 @@ def upload_video(playlist_id, temp_file_path, filename):
     try:
         # Move temp file to final location
         shutil.move(str(temp_file_path), str(file_path))
+        
+        # Set file permissions to be readable by all users (0644)
+        file_path.chmod(0o644)
         
         # Update video count
         videos = get_playlist_videos(playlist_id)
