@@ -1228,6 +1228,78 @@ def is_youtube_url(url):
         return False
 
 
+def downscale_video_to_1080p(video_path):
+    """Downscale video to 1080p using ffmpeg if resolution is higher"""
+    try:
+        # Check current resolution using ffprobe
+        probe_cmd = [
+            'ffprobe', '-v', 'error',
+            '-select_streams', 'v:0',
+            '-show_entries', 'stream=width,height',
+            '-of', 'csv=p=0',
+            str(video_path)
+        ]
+        
+        result = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=10)
+        if result.returncode != 0:
+            logger.warning("[DOWNSCALE] Could not probe video resolution: %s", result.stderr)
+            return True  # Skip downscaling but don't fail
+        
+        # Parse width,height
+        resolution = result.stdout.strip().split(',')
+        if len(resolution) != 2:
+            logger.warning("[DOWNSCALE] Invalid resolution format: %s", result.stdout)
+            return True
+        
+        width, height = int(resolution[0]), int(resolution[1])
+        logger.info("[DOWNSCALE] Video resolution: %dx%d", width, height)
+        
+        # Only downscale if height > 1080 or width > 1920
+        if height <= 1080 and width <= 1920:
+            logger.info("[DOWNSCALE] Video already at or below 1080p, skipping")
+            return True
+        
+        logger.info("[DOWNSCALE] Downscaling video from %dx%d to 1080p...", width, height)
+        
+        # Create temp output file
+        temp_output = video_path.parent / f".downscaling_{video_path.name}"
+        
+        # Downscale using ffmpeg with hardware acceleration if available
+        ffmpeg_cmd = [
+            'ffmpeg', '-i', str(video_path),
+            '-vf', 'scale=-2:1080',  # Maintain aspect ratio, height=1080
+            '-c:v', 'libx264',  # H.264 codec
+            '-preset', 'fast',  # Fast encoding
+            '-crf', '23',  # Quality (lower = better, 23 is default)
+            '-c:a', 'copy',  # Copy audio without re-encoding
+            '-y',  # Overwrite output
+            str(temp_output)
+        ]
+        
+        logger.info("[DOWNSCALE] Running: %s", ' '.join(ffmpeg_cmd))
+        result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, timeout=300)
+        
+        if result.returncode != 0:
+            logger.error("[DOWNSCALE] ffmpeg failed: %s", result.stderr)
+            if temp_output.exists():
+                temp_output.unlink()
+            return False
+        
+        # Replace original with downscaled version
+        temp_output.replace(video_path)
+        logger.info("[DOWNSCALE] Successfully downscaled video to 1080p")
+        return True
+        
+    except subprocess.TimeoutExpired:
+        logger.error("[DOWNSCALE] Downscaling timed out")
+        if temp_output.exists():
+            temp_output.unlink()
+        return False
+    except Exception as e:
+        logger.error("[DOWNSCALE] Downscaling failed: %s", str(e))
+        return False
+
+
 def download_youtube_video(playlist_id, video_url, download_id):
     """Download video from YouTube using yt-dlp library with progress tracking"""
     global download_status
@@ -1307,6 +1379,12 @@ def download_youtube_video(playlist_id, video_url, download_id):
             new_filename = f"{video_id}.mp4"
             new_path = playlist_dir / new_filename
             video_file.rename(new_path)
+            
+            # Downscale to 1080p if needed
+            logger.info("[DOWNLOAD] Checking if downscaling needed...")
+            downscale_success = downscale_video_to_1080p(new_path)
+            if not downscale_success:
+                logger.warning("[DOWNLOAD] Downscaling failed, keeping original video")
             
             duration = get_video_duration(new_path)
             

@@ -6,6 +6,7 @@ Handles HTTP requests and routes them to appropriate service functions.
 import json
 import uuid
 import threading
+import subprocess
 from pathlib import Path
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs, unquote
@@ -35,7 +36,7 @@ from service import (
     upload_image, delete_image, delete_video,
     skip_image, unskip_image,
     parse_multipart_form_data, parse_multipart_form_data_streaming,
-    download_youtube_video,
+    download_youtube_video, downscale_video_to_1080p,
     start_video_playback, stop_video_playback, get_playlist_videos, save_playlists_db,
 
     # Idle screen
@@ -45,6 +46,8 @@ from service import (
     load_schedules_db, list_schedules, get_schedule, create_schedule,
     update_schedule, delete_schedule, stop_scheduler,
 )
+
+
 
 
 class APIHandler(BaseHTTPRequestHandler):
@@ -409,6 +412,12 @@ class APIHandler(BaseHTTPRequestHandler):
                                     # Set proper permissions
                                     final_path.chmod(0o644)
                                     
+                                    # Downscale to 1080p if needed
+                                    logger.info("[UPLOAD-HANDLER] Checking if downscaling needed...")
+                                    downscale_success = downscale_video_to_1080p(final_path)
+                                    if not downscale_success:
+                                        logger.warning("[UPLOAD-HANDLER] Downscaling failed, keeping original video")
+                                    
                                     # Update playlist database
                                     videos = get_playlist_videos(playlist_id)
                                     playlists_db["playlists"][playlist_id]["video_count"] = len(videos)
@@ -462,6 +471,12 @@ class APIHandler(BaseHTTPRequestHandler):
                                     # Write directly
                                     final_path.write_bytes(file_info['data'])
                                     final_path.chmod(0o644)
+                                    
+                                    # Downscale to 1080p if needed
+                                    logger.info("[UPLOAD-HANDLER] Checking if downscaling needed...")
+                                    downscale_success = downscale_video_to_1080p(final_path)
+                                    if not downscale_success:
+                                        logger.warning("[UPLOAD-HANDLER] Downscaling failed, keeping original video")
                                     
                                     # Update database
                                     videos = get_playlist_videos(playlist_id)
