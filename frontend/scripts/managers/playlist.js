@@ -70,12 +70,14 @@ const PlaylistManager = {
       <div class="playlist-header">
         <div class="playlist-name">${config.icon} ${UI.escapeHtml(playlist.name)}</div>
         <div class="playlist-actions">
+          ${playlist.id !== "default" ? '<button class="icon-btn edit-playlist" title="Edit Settings">⚙️</button>' : ""}
           ${playlist.id !== "default" ? '<button class="icon-btn delete-playlist" title="Delete">🗑️</button>' : ""}
         </div>
       </div>
       <div class="playlist-info">
         ${typeBadge}
         <span>${contentLabel}</span>
+        ${!isVideo ? `<span>⏱️ ${playlist.delay || 5}s</span>` : ""}
       </div>
       <div class="playlist-badges">
         ${badges.join("")}
@@ -84,7 +86,10 @@ const PlaylistManager = {
 
     // Click to select and view content
     card.addEventListener("click", (e) => {
-      if (!e.target.classList.contains("delete-playlist")) {
+      if (
+        !e.target.classList.contains("delete-playlist") &&
+        !e.target.classList.contains("edit-playlist")
+      ) {
         this.select(playlist.id, playlist.type || CONTENT_TYPES.IMAGE);
         ContentManager.show(
           playlist.id,
@@ -93,6 +98,15 @@ const PlaylistManager = {
         );
       }
     });
+
+    // Edit button
+    const editBtn = card.querySelector(".edit-playlist");
+    if (editBtn) {
+      editBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.edit(playlist);
+      });
+    }
 
     // Delete button
     const deleteBtn = card.querySelector(".delete-playlist");
@@ -141,6 +155,7 @@ const PlaylistManager = {
   async create() {
     const name = DOM.playlistNameInput.value.trim();
     const type = DOM.playlistTypeSelect.value;
+    const delay = parseInt(DOM.playlistDelayInput.value) || 5;
 
     if (!name) {
       UI.showToast("Please enter a playlist name", TOAST_TYPES.WARNING);
@@ -149,7 +164,7 @@ const PlaylistManager = {
 
     UI.showLoading();
 
-    const data = await API.createPlaylist(name, type);
+    const data = await API.createPlaylist(name, type, delay);
 
     UI.hideLoading();
 
@@ -163,6 +178,45 @@ const PlaylistManager = {
     } else {
       UI.showToast(
         data?.message || "Failed to create playlist",
+        TOAST_TYPES.ERROR,
+      );
+    }
+  },
+
+  /**
+   * Edit playlist settings
+   */
+  async edit(playlist) {
+    const newName = prompt("Playlist name:", playlist.name);
+    if (newName === null) return; // User cancelled
+
+    const newDelay = prompt("Slide delay (seconds):", playlist.delay || 5);
+    if (newDelay === null) return; // User cancelled
+
+    const delay = parseInt(newDelay);
+    if (isNaN(delay) || delay < 1 || delay > 60) {
+      UI.showToast(
+        "Invalid delay value (must be 1-60 seconds)",
+        TOAST_TYPES.WARNING,
+      );
+      return;
+    }
+
+    UI.showLoading();
+
+    const data = await API.updatePlaylist(playlist.id, {
+      name: newName.trim() || playlist.name,
+      delay: delay,
+    });
+
+    UI.hideLoading();
+
+    if (data && data.status === "success") {
+      UI.showToast("Playlist updated successfully", TOAST_TYPES.SUCCESS);
+      this.load();
+    } else {
+      UI.showToast(
+        data?.message || "Failed to update playlist",
         TOAST_TYPES.ERROR,
       );
     }

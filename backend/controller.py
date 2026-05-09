@@ -28,7 +28,7 @@ from service import (
 
     # Service functions
     get_status, start_slideshow, stop_slideshow, clear_framebuffer,
-    list_playlists, create_playlist, delete_playlist,
+    list_playlists, create_playlist, update_playlist, delete_playlist,
     get_playlist_images_list, get_playlist_videos_list,
     upload_image, delete_image, delete_video,
     skip_image, unskip_image,
@@ -315,7 +315,8 @@ class APIHandler(BaseHTTPRequestHandler):
                 data = json.loads(post_data.decode('utf-8'))
                 name = data.get("name", "Untitled Playlist")
                 playlist_type = data.get("type", "image")  # "image" or "video"
-                response = create_playlist(name, playlist_type)
+                delay = data.get("delay", 5)  # Default 5 seconds
+                response = create_playlist(name, playlist_type, delay)
             
             elif path.startswith("/api/playlists/") and "/upload" in path:
                 # Upload image to playlist
@@ -516,7 +517,33 @@ class APIHandler(BaseHTTPRequestHandler):
         logger.info("PUT %s from %s", path, self.client_address[0])
 
         try:
-            if path.startswith("/api/schedules/"):
+            # Protected endpoints (require authentication)
+            cookie_header = self.headers.get('Cookie', '')
+            session_token = None
+            for cookie in cookie_header.split(';'):
+                cookie = cookie.strip()
+                if cookie.startswith('session_token='):
+                    session_token = cookie.split('=', 1)[1]
+                    break
+            
+            user_info = validate_session(session_token)
+            if not user_info:
+                response = {"status": "error", "message": "Unauthorized. Please login."}
+                self.send_json_response(response, 401)
+                return
+            
+            if path.startswith("/api/playlists/"):
+                # Update playlist settings
+                playlist_id = path.split("/")[3]
+                content_length = int(self.headers.get("Content-Length", 0))
+                data = json.loads(self.rfile.read(content_length))
+                result = update_playlist(
+                    playlist_id,
+                    name=data.get("name"),
+                    delay=data.get("delay")
+                )
+                self.send_json_response(result)
+            elif path.startswith("/api/schedules/"):
                 schedule_id = path.split("/")[3]
                 content_length = int(self.headers.get("Content-Length", 0))
                 data = json.loads(self.rfile.read(content_length))

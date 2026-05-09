@@ -528,7 +528,8 @@ def start_slideshow(playlist_id=None):
         return {"status": "error", "message": "No images found in playlist"}
 
     try:
-        delay = config.get("delay", 5)
+        # Get delay from playlist, fallback to config default
+        delay = playlists_db["playlists"][playlist_id].get("delay", config.get("delay", 5))
         framebuffer = config.get("framebuffer", "/dev/fb0")
 
         cmd = [
@@ -622,21 +623,24 @@ def get_status():
     """Get current slideshow status"""
     active_playlist_id = playlists_db.get("active_playlist")
     image_count = 0
-    if active_playlist_id:
+    delay = config.get("delay", 5)  # Default delay
+    
+    if active_playlist_id and active_playlist_id in playlists_db["playlists"]:
         image_count = len(get_playlist_images(active_playlist_id))
+        delay = playlists_db["playlists"][active_playlist_id].get("delay", 5)
     
     return {
         "running": slideshow_process is not None or video_process is not None,
         "current_playlist": current_playlist,
         "active_playlist": active_playlist_id,
         "image_count": image_count,
-        "delay": config.get("delay"),
+        "delay": delay,
         "framebuffer": config.get("framebuffer"),
         "total_playlists": len(playlists_db.get("playlists", {}))
     }
 
 
-def create_playlist(name, playlist_type="image"):
+def create_playlist(name, playlist_type="image", delay=5):
     """Create a new playlist"""
     playlist_id = str(uuid.uuid4())[:8]
     
@@ -655,12 +659,32 @@ def create_playlist(name, playlist_type="image"):
         "type": playlist_type,
         "created": __import__('datetime').datetime.now().isoformat(),
         "image_count": 0,
-        "video_count": 0 if playlist_type == "video" else None
+        "video_count": 0 if playlist_type == "video" else None,
+        "delay": delay
     }
     save_playlists_db()
     
-    logger.info("Created %s playlist: %s (ID: %s)", playlist_type, name, playlist_id)
+    logger.info("Created %s playlist: %s (ID: %s) with delay: %ds", playlist_type, name, playlist_id, delay)
     return {"status": "success", "playlist_id": playlist_id, "message": "Playlist created"}
+
+
+def update_playlist(playlist_id, name=None, delay=None):
+    """Update playlist settings"""
+    if playlist_id not in playlists_db["playlists"]:
+        return {"status": "error", "message": "Playlist not found"}
+    
+    playlist = playlists_db["playlists"][playlist_id]
+    
+    if name is not None:
+        playlist["name"] = name
+    
+    if delay is not None:
+        playlist["delay"] = delay
+    
+    save_playlists_db()
+    
+    logger.info("Updated playlist %s: name=%s, delay=%s", playlist_id, name, delay)
+    return {"status": "success", "message": "Playlist updated", "playlist": playlist}
 
 
 def delete_playlist(playlist_id):
@@ -718,6 +742,7 @@ def list_playlists():
             "image_count": item_count if plist_type == "image" else 0,
             "video_count": item_count if plist_type == "video" else 0,
             "created": info.get("created", ""),
+            "delay": info.get("delay", 5),
             "is_active": playlists_db.get("active_playlist") == playlist_id,
             "is_playing": current_playlist == playlist_id
         })
