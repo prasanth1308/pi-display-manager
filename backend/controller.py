@@ -25,7 +25,7 @@ from service import (
     setup_logging, ensure_directories, load_config, load_playlists_db,
 
     # State variables
-    logger, config, playlists_db, download_status,
+    logger, config, playlists_db, download_status, upload_status,
     slideshow_process, video_process, STATIC_DIR, IDLE_DIR, PLAYLISTS_DIR,
     DATA_DIR, UPLOADS_DIR,
 
@@ -63,7 +63,9 @@ class APIHandler(BaseHTTPRequestHandler):
         status = 200
         content_type = "application/json"
 
-        logger.info("GET %s from %s", path, self.client_address[0])
+        # Skip logging for status endpoint to avoid log clutter
+        if path != "/api/status":
+            logger.info("GET %s from %s", path, self.client_address[0])
 
         # Public endpoints (no auth required)
         if path == "/login.html" or path == "/login":
@@ -166,6 +168,13 @@ class APIHandler(BaseHTTPRequestHandler):
                 response = download_status[download_id]
             else:
                 response = {"status": "not_found", "message": "Download not found"}
+        elif path.startswith("/api/upload/"):
+            # Get upload status
+            upload_id = path.split("/")[3]
+            if upload_id in upload_status:
+                response = upload_status[upload_id]
+            else:
+                response = {"status": "not_found", "message": "Upload not found"}
         elif path == "/api/start":
             playlist_id = query.get("playlist", [None])[0]
             if playlist_id and playlist_id in playlists_db["playlists"]:
@@ -256,7 +265,9 @@ class APIHandler(BaseHTTPRequestHandler):
         response = None
         status = 200
 
-        logger.info("POST %s from %s", path, self.client_address[0])
+        # Skip logging for status endpoint to avoid log clutter
+        if path != "/api/status":
+            logger.info("POST %s from %s", path, self.client_address[0])
 
         try:
             # Public endpoints (no auth required)
@@ -333,6 +344,9 @@ class APIHandler(BaseHTTPRequestHandler):
                     # Check if content length suggests a video (>10MB = likely video)
                     # Use streaming for large files to avoid RAM exhaustion
                     if content_length > 10 * 1024 * 1024:  # 10MB threshold
+                        # Generate upload ID for progress tracking
+                        upload_id = str(uuid.uuid4())[:8]
+                        
                         # Stream directly to temp file
                         temp_file = tempfile.NamedTemporaryFile(delete=False, dir=str(UPLOADS_DIR))
                         temp_path = Path(temp_file.name)
@@ -342,7 +356,8 @@ class APIHandler(BaseHTTPRequestHandler):
                             content_type,
                             self.rfile,
                             content_length,
-                            temp_path
+                            temp_path,
+                            upload_id  # Pass upload ID for progress tracking
                         )
                         
                         if file_info and file_info.get('filename'):
@@ -357,6 +372,9 @@ class APIHandler(BaseHTTPRequestHandler):
                                     str(temp_path),
                                     filename
                                 )
+                                # Add upload_id to response for frontend tracking
+                                if response.get('status') == 'success':
+                                    response['upload_id'] = upload_id
                             else:
                                 # Large non-video file - treat as image but warn
                                 # Read temp file (still in memory but unavoidable for images)
@@ -508,7 +526,9 @@ class APIHandler(BaseHTTPRequestHandler):
         response = None
         status = 200
 
-        logger.info("DELETE %s from %s", path, self.client_address[0])
+        # Skip logging for status endpoint to avoid log clutter
+        if path != "/api/status":
+            logger.info("DELETE %s from %s", path, self.client_address[0])
 
         try:
             # Protected endpoints (require authentication)
@@ -580,7 +600,9 @@ class APIHandler(BaseHTTPRequestHandler):
         parsed_path = urlparse(self.path)
         path = parsed_path.path
 
-        logger.info("PUT %s from %s", path, self.client_address[0])
+        # Skip logging for status endpoint to avoid log clutter
+        if path != "/api/status":
+            logger.info("PUT %s from %s", path, self.client_address[0])
 
         try:
             # Protected endpoints (require authentication)

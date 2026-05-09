@@ -23,6 +23,7 @@ config = {}
 playlists_db = {}
 current_playlist = None
 download_status = {}  # Track video download status
+upload_status = {}  # Track video upload status
 api_port = 8000
 logger = None
 BASE_DIR = Path(__file__).parent.parent
@@ -986,9 +987,20 @@ def get_playlist_videos_list(playlist_id):
     return {"status": "success", "playlist_id": playlist_id, "videos": videos}
 
 
-def parse_multipart_form_data_streaming(content_type, file_obj, content_length, output_path):
+def parse_multipart_form_data_streaming(content_type, file_obj, content_length, output_path, upload_id=None):
     """Parse multipart/form-data by streaming to disk to avoid RAM exhaustion"""
+    global upload_status
+    
     try:
+        # Initialize upload status
+        if upload_id:
+            upload_status[upload_id] = {
+                "status": "uploading",
+                "progress": 0,
+                "bytes_written": 0,
+                "total_bytes": content_length
+            }
+        
         # Extract boundary from content type
         boundary = None
         for part in content_type.split(';'):
@@ -998,6 +1010,8 @@ def parse_multipart_form_data_streaming(content_type, file_obj, content_length, 
                 break
         
         if not boundary:
+            if upload_id:
+                upload_status[upload_id] = {"status": "error", "message": "Invalid boundary"}
             return None
         
         boundary_bytes = ('--' + boundary).encode()
@@ -1010,6 +1024,7 @@ def parse_multipart_form_data_streaming(content_type, file_obj, content_length, 
         in_file_content = False
         out_file = None
         bytes_written = 0
+        last_progress_update = 0
         
         try:
             while True:
@@ -1059,17 +1074,39 @@ def parse_multipart_form_data_streaming(content_type, file_obj, content_length, 
                             out_file.write(buffer[:write_size])
                             bytes_written += write_size
                             buffer = buffer[write_size:]
+                            
+                            # Update progress every 1%
+                            if upload_id and content_length > 0:
+                                progress = min(99, int((bytes_written / content_length) * 100))
+                                if progress > last_progress_update:
+                                    upload_status[upload_id].update({
+                                        "progress": progress,
+                                        "bytes_written": bytes_written,
+                                        "status": "uploading"
+                                    })
+                                    last_progress_update = progress
         
         finally:
             if out_file:
                 out_file.close()
         
         if filename and bytes_written > 0:
+            # Mark as complete
+            if upload_id:
+                upload_status[upload_id] = {
+                    "status": "complete",
+                    "progress": 100,
+                    "bytes_written": bytes_written,
+                    "filename": filename
+                }
             return {'filename': filename, 'path': str(output_path), 'size': bytes_written}
         
         # Clean up if failed
         if output_path.exists():
             output_path.unlink()
+        
+        if upload_id:
+            upload_status[upload_id] = {"status": "error", "message": "Upload failed"}
         
         return None
     
@@ -1077,6 +1114,8 @@ def parse_multipart_form_data_streaming(content_type, file_obj, content_length, 
         logger.error("Error parsing multipart form data (streaming): %s", e)
         if output_path and output_path.exists():
             output_path.unlink()
+        if upload_id:
+            upload_status[upload_id] = {"status": "error", "message": str(e)}
         return None
 
 

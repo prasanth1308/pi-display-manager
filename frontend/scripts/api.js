@@ -82,6 +82,7 @@ const API = {
       body: JSON.stringify({ url }),
     }),
   getDownloadStatus: (downloadId) => API.call(`/download/${downloadId}`),
+  getUploadStatus: (uploadId) => API.call(`/upload/${uploadId}`),
   deleteVideo: (playlistId, filename) =>
     API.call(
       `/playlists/${playlistId}/videos/${encodeURIComponent(filename)}`,
