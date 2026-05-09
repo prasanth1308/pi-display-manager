@@ -51,6 +51,20 @@ const API = {
         method: "DELETE",
       },
     ),
+  skipImage: (playlistId, filename) =>
+    API.call(
+      `/playlists/${playlistId}/images/${encodeURIComponent(filename)}/skip`,
+      {
+        method: "POST",
+      },
+    ),
+  unskipImage: (playlistId, filename) =>
+    API.call(
+      `/playlists/${playlistId}/images/${encodeURIComponent(filename)}/skip`,
+      {
+        method: "DELETE",
+      },
+    ),
 
   // Video endpoints
   getPlaylistVideos: (playlistId) =>

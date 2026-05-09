@@ -448,16 +448,39 @@ def save_playlists_db():
         logger.error("Failed to save playlists database: %s", e)
 
 
+def get_playlist_metadata(playlist_id):
+    """Get or create metadata for a playlist (tracks skipped images)"""
+    metadata_file = PLAYLISTS_DIR / f"{playlist_id}_metadata.json"
+    if metadata_file.exists():
+        try:
+            with open(metadata_file) as f:
+                return json.load(f)
+        except:
+            pass
+    return {"skipped_images": []}
+
+
+def save_playlist_metadata(playlist_id, metadata):
+    """Save playlist metadata"""
+    metadata_file = PLAYLISTS_DIR / f"{playlist_id}_metadata.json"
+    with open(metadata_file, 'w') as f:
+        json.dump(metadata, f, indent=2)
+
+
 def get_playlist_images(playlist_id):
-    """Get list of image files from a playlist folder"""
+    """Get list of image files from a playlist folder (excluding skipped images)"""
     playlist_dir = PLAYLISTS_DIR / playlist_id
     if not playlist_dir.exists():
         return []
     
+    # Get metadata to check skipped images
+    metadata = get_playlist_metadata(playlist_id)
+    skipped_images = set(metadata.get("skipped_images", []))
+    
     image_extensions = {".jpg", ".jpeg", ".png", ".bmp", ".gif"}
     images = sorted([
         str(f) for f in playlist_dir.iterdir()
-        if f.suffix.lower() in image_extensions and f.is_file()
+        if f.suffix.lower() in image_extensions and f.is_file() and f.name not in skipped_images
     ])
     return images
 
@@ -738,6 +761,46 @@ def upload_image(playlist_id, file_data, filename):
         return {"status": "error", "message": str(e)}
 
 
+def skip_image(playlist_id, filename):
+    """Mark an image as skipped in the playlist"""
+    if playlist_id not in playlists_db["playlists"]:
+        return {"status": "error", "message": "Playlist not found"}
+    
+    playlist_dir = PLAYLISTS_DIR / playlist_id
+    image_path = playlist_dir / filename
+    
+    if not image_path.exists():
+        return {"status": "error", "message": "Image not found"}
+    
+    metadata = get_playlist_metadata(playlist_id)
+    skipped_images = metadata.get("skipped_images", [])
+    
+    if filename not in skipped_images:
+        skipped_images.append(filename)
+        metadata["skipped_images"] = skipped_images
+        save_playlist_metadata(playlist_id, metadata)
+        logger.info("Image skipped: %s in playlist %s", filename, playlist_id)
+    
+    return {"status": "success", "message": "Image skipped"}
+
+
+def unskip_image(playlist_id, filename):
+    """Unmark an image as skipped in the playlist"""
+    if playlist_id not in playlists_db["playlists"]:
+        return {"status": "error", "message": "Playlist not found"}
+    
+    metadata = get_playlist_metadata(playlist_id)
+    skipped_images = metadata.get("skipped_images", [])
+    
+    if filename in skipped_images:
+        skipped_images.remove(filename)
+        metadata["skipped_images"] = skipped_images
+        save_playlist_metadata(playlist_id, metadata)
+        logger.info("Image unskipped: %s in playlist %s", filename, playlist_id)
+    
+    return {"status": "success", "message": "Image unskipped"}
+
+
 def delete_image(playlist_id, filename):
     """Delete an image from a playlist"""
     if playlist_id not in playlists_db["playlists"]:
@@ -796,6 +859,10 @@ def get_playlist_images_list(playlist_id):
     playlist_dir = PLAYLISTS_DIR / playlist_id
     images = []
     
+    # Get metadata to check skipped images
+    metadata = get_playlist_metadata(playlist_id)
+    skipped_images = set(metadata.get("skipped_images", []))
+    
     image_extensions = {".jpg", ".jpeg", ".png", ".bmp", ".gif"}
     for file_path in sorted(playlist_dir.iterdir()):
         if file_path.suffix.lower() in image_extensions and file_path.is_file():
@@ -804,7 +871,8 @@ def get_playlist_images_list(playlist_id):
                 "filename": file_path.name,
                 "size": stat.st_size,
                 "modified": stat.st_mtime,
-                "type": "image"
+                "type": "image",
+                "skipped": file_path.name in skipped_images
             })
     
     return {"status": "success", "playlist_id": playlist_id, "images": images}

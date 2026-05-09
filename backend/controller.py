@@ -31,6 +31,7 @@ from service import (
     list_playlists, create_playlist, delete_playlist,
     get_playlist_images_list, get_playlist_videos_list,
     upload_image, delete_image, delete_video,
+    skip_image, unskip_image,
     parse_multipart_form_data, download_youtube_video,
     start_video_playback, stop_video_playback, get_playlist_videos,
 
@@ -373,6 +374,14 @@ class APIHandler(BaseHTTPRequestHandler):
                             "message": "Download started"
                         }
             
+            elif path.startswith("/api/playlists/") and "/images/" in path and "/skip" in path:
+                # Skip an image in playlist
+                # Format: /api/playlists/{id}/images/{filename}/skip
+                parts = path.split("/")
+                playlist_id = parts[3]
+                filename = parts[5]
+                response = skip_image(playlist_id, filename)
+            
             elif path == "/api/schedules":
                 content_length = int(self.headers.get("Content-Length", 0))
                 data = json.loads(self.rfile.read(content_length))
@@ -453,7 +462,15 @@ class APIHandler(BaseHTTPRequestHandler):
             # Store current user for logging
             self.current_user = user_info
             
-            if path.startswith("/api/playlists/") and "/images/" in path:
+            if path.startswith("/api/playlists/") and "/images/" in path and "/skip" in path:
+                # Unskip an image in playlist
+                # Format: /api/playlists/{id}/images/{filename}/skip
+                parts = path.split("/")
+                playlist_id = parts[3]
+                filename = parts[5]
+                response = unskip_image(playlist_id, filename)
+            
+            elif path.startswith("/api/playlists/") and "/images/" in path:
                 # Delete image from playlist
                 parts = path.split("/")
                 playlist_id = parts[3]
