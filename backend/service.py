@@ -24,7 +24,6 @@ playlists_db = {}
 current_playlist = None
 download_status = {}  # Track video download status
 downscale_status = {}  # Track video downscaling progress
-api_port = 8000
 logger = None
 BASE_DIR = Path(__file__).parent.parent
 DATA_DIR = BASE_DIR / "data"

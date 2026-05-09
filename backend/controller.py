@@ -15,8 +15,7 @@ import sys
 
 # Import authentication module
 from auth import (
-    authenticate_user, validate_session, destroy_session, 
-    require_auth, cleanup_expired_sessions
+    authenticate_user, validate_session, destroy_session
 )
 
 # Import service layer functions and state
@@ -820,7 +819,7 @@ def signal_handler(sig, frame):
 
 def run_server():
     """Start the HTTP server"""
-    from service import config, logger, api_port, DATA_DIR, PLAYLISTS_DIR
+    from service import config, logger, DATA_DIR, PLAYLISTS_DIR
     
     port = config.get("api_port", 8000)
     delay = config.get("delay", 5)

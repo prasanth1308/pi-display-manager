@@ -167,18 +167,6 @@ def destroy_session(session_token):
     return False
 
 
-def cleanup_expired_sessions():
-    """Remove expired sessions (call periodically)"""
-    current_time = time.time()
-    expired = [token for token, session in active_sessions.items() 
-               if current_time > session['expires_at']]
-    
-    for token in expired:
-        del active_sessions[token]
-    
-    return len(expired)
-
-
 def authenticate_user(username, password):
     """
     Authenticate user and return session token if successful
@@ -200,7 +188,6 @@ def authenticate_user(username, password):
         return False, "Invalid username or password"
 
 
-def require_auth(handler_method):
     """Decorator for protecting API endpoints"""
     def wrapper(self, *args, **kwargs):
         # Get session token from cookie
