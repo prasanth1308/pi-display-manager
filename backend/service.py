@@ -1316,8 +1316,14 @@ def downscale_video_to_1080p(video_path, downscale_id=None):
             'ffmpeg', '-i', str(video_path),
             '-vf', 'scale=-2:1080',  # Maintain aspect ratio, height=1080
             '-c:v', 'h264_omx',  # Hardware codec for Raspberry Pi
-            '-b:v', '2M',  # 2Mbps bitrate
-            '-c:a', 'copy',  # Copy audio without re-encoding
+            '-b:v', '2500k',  # 2.5Mbps bitrate for better quality
+            '-bufsize', '5000k',  # Buffer size
+            '-r', '30',  # Fix frame rate to 30fps
+            '-c:a', 'aac',  # Re-encode audio to AAC for compatibility
+            '-b:a', '128k',  # Audio bitrate
+            '-ar', '44100',  # Audio sample rate
+            '-ac', '2',  # Stereo audio
+            '-max_muxing_queue_size', '1024',  # Increase queue size
             '-progress', 'pipe:1',  # Output progress to stdout
             '-y',  # Overwrite output
             str(temp_output)
@@ -1326,7 +1332,7 @@ def downscale_video_to_1080p(video_path, downscale_id=None):
         logger.info("[DOWNSCALE-HARDWARE] Running: %s", ' '.join(ffmpeg_cmd))
         success = _run_ffmpeg_with_progress(ffmpeg_cmd, duration, downscale_id, "hardware", timeout=600)
         
-        # If hardware encoding failed, try software with ultrafast preset
+        # If hardware encoding failed, try software with optimized settings
         if not success:
             logger.warning("[DOWNSCALE] Hardware encoding failed, trying software encoding...")
             if downscale_id:
@@ -1340,10 +1346,15 @@ def downscale_video_to_1080p(video_path, downscale_id=None):
                 'ffmpeg', '-i', str(video_path),
                 '-vf', 'scale=-2:1080',
                 '-c:v', 'libx264',
-                '-preset', 'ultrafast',  # Fastest preset
-                '-crf', '30',  # Lower quality for speed
-                '-vsync', 'cfr',  # Constant frame rate to preserve speed
-                '-c:a', 'copy',
+                '-preset', 'veryfast',  # Faster than medium, better quality than ultrafast
+                '-crf', '23',  # Better quality (lower = better)
+                '-threads', '2',  # Limit CPU usage on Raspberry Pi
+                '-r', '30',  # Fix frame rate to 30fps
+                '-c:a', 'aac',  # Re-encode audio to AAC
+                '-b:a', '128k',
+                '-ar', '44100',
+                '-ac', '2',
+                '-max_muxing_queue_size', '1024',
                 '-progress', 'pipe:1',
                 '-y',
                 str(temp_output)
@@ -1403,8 +1414,12 @@ def _run_ffmpeg_with_progress(cmd, duration, downscale_id, mode, timeout):
     global downscale_status
     
     try:
+        # Lower process priority to reduce resource impact
+        # nice value of 10 means lower priority (range: -20 to 19)
+        nice_cmd = ['nice', '-n', '10'] + cmd
+        
         process = subprocess.Popen(
-            cmd,
+            nice_cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             universal_newlines=True,
