@@ -82,15 +82,18 @@ const ImageManager = {
     }
 
     // Check if any file is a video
-    const videoExtensions = ['mp4', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'webm'];
-    const hasVideo = files.some(file => {
-      const ext = file.name.split('.').pop().toLowerCase();
+    const videoExtensions = ["mp4", "avi", "mkv", "mov", "wmv", "flv", "webm"];
+    const hasVideo = files.some((file) => {
+      const ext = file.name.split(".").pop().toLowerCase();
       return videoExtensions.includes(ext);
     });
 
     // If video, only allow 1 file
     if (hasVideo && files.length > 1) {
-      UI.showToast("Only one video can be uploaded at a time", TOAST_TYPES.WARNING);
+      UI.showToast(
+        "Only one video can be uploaded at a time",
+        TOAST_TYPES.WARNING,
+      );
       return;
     }
 
@@ -101,9 +104,9 @@ const ImageManager = {
 
     for (const file of files) {
       const formData = new FormData();
-      const ext = file.name.split('.').pop().toLowerCase();
+      const ext = file.name.split(".").pop().toLowerCase();
       const isVideo = videoExtensions.includes(ext);
-      
+
       // Use appropriate form field name
       formData.append(isVideo ? "video" : "image", file);
 
@@ -128,7 +131,7 @@ const ImageManager = {
         `${successCount} ${fileType}${plural} uploaded successfully`,
         TOAST_TYPES.SUCCESS,
       );
-      
+
       // Reload appropriate content type
       if (hasVideo) {
         await VideoManager.load(AppState.selectedPlaylistId);
