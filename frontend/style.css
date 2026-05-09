@@ -32,48 +32,74 @@ body {
 }
 
 .container {
-    max-width: 1200px;
+    max-width: 1400px;
     margin: 0 auto;
-    padding: 20px;
+    padding: 16px;
     flex: 1;
 }
 
 /* Header */
 header {
     background: var(--card-bg);
-    border-radius: 12px;
-    padding: 24px;
-    margin-bottom: 24px;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
     box-shadow: var(--shadow);
 }
 
-header h1 {
-    font-size: 2rem;
-    margin-bottom: 16px;
-    color: var(--text-primary);
-}
-
-.status-bar {
+.header-top {
     display: flex;
-    gap: 24px;
-    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
 }
 
-.status-item {
+.header-actions {
     display: flex;
     align-items: center;
     gap: 8px;
 }
 
-.status-item .label {
+.user-info {
     color: var(--text-secondary);
-    font-size: 0.9rem;
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+
+header h1 {
+    font-size: 1.25rem;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.status-bar {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.status-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85rem;
+}
+
+.status-label {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+}
+
+.status-value {
+    color: var(--text-primary);
+    font-weight: 500;
 }
 
 .badge {
-    padding: 4px 12px;
-    border-radius: 6px;
-    font-size: 0.85rem;
+    padding: 3px 10px;
+    border-radius: 4px;
+    font-size: 0.75rem;
     font-weight: 600;
     background: var(--secondary-color);
     color: white;
@@ -86,41 +112,39 @@ header h1 {
 /* Control Panel */
 .control-panel {
     background: var(--card-bg);
-    border-radius: 12px;
-    padding: 24px;
-    margin-bottom: 24px;
-    box-shadow: var(--shadow);
-}
-
-.control-panel h2 {
-    font-size: 1.5rem;
+    border-radius: 8px;
+    padding: 12px 16px;
     margin-bottom: 16px;
+    box-shadow: var(--shadow);
 }
 
 .controls {
     display: flex;
-    gap: 12px;
-    margin-bottom: 12px;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
 }
 
 .help-text {
     color: var(--text-secondary);
-    font-size: 0.9rem;
+    font-size: 0.8rem;
+    margin-left: auto;
 }
 
 /* Buttons */
 .btn {
-    padding: 10px 20px;
+    padding: 8px 16px;
     border: none;
-    border-radius: 8px;
-    font-size: 1rem;
+    border-radius: 6px;
+    font-size: 0.9rem;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 6px;
+    white-space: nowrap;
 }
 
 .btn:hover {
@@ -134,9 +158,14 @@ header h1 {
     transform: none;
 }
 
+.btn-sm {
+    padding: 6px 12px;
+    font-size: 0.85rem;
+}
+
 .btn-large {
-    padding: 14px 28px;
-    font-size: 1.1rem;
+    padding: 10px 20px;
+    font-size: 1rem;
 }
 
 .btn-primary {
@@ -175,9 +204,9 @@ header h1 {
 .images-section,
 .schedules-section {
     background: var(--card-bg);
-    border-radius: 12px;
-    padding: 24px;
-    margin-bottom: 24px;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
     box-shadow: var(--shadow);
 }
 
@@ -185,25 +214,26 @@ header h1 {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 20px;
+    margin-bottom: 16px;
 }
 
 .section-header h2 {
-    font-size: 1.5rem;
+    font-size: 1.1rem;
+    font-weight: 600;
 }
 
 /* Playlists Grid */
 .playlists-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 16px;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
 }
 
 .playlist-card {
     background: var(--bg-color);
     border: 2px solid var(--border-color);
-    border-radius: 10px;
-    padding: 20px;
+    border-radius: 8px;
+    padding: 12px;
     cursor: pointer;
     transition: all 0.2s;
     position: relative;
@@ -230,28 +260,29 @@ header h1 {
     display: flex;
     justify-content: space-between;
     align-items: start;
-    margin-bottom: 12px;
+    margin-bottom: 8px;
 }
 
 .playlist-name {
-    font-size: 1.2rem;
+    font-size: 1rem;
     font-weight: 600;
     color: var(--text-primary);
     flex: 1;
+    line-height: 1.3;
 }
 
 .playlist-actions {
     display: flex;
-    gap: 4px;
+    gap: 2px;
 }
 
 .icon-btn {
     background: transparent;
     border: none;
-    padding: 4px 8px;
+    padding: 2px 6px;
     cursor: pointer;
     border-radius: 4px;
-    font-size: 1.2rem;
+    font-size: 1.1rem;
     transition: background 0.2s;
 }
 
@@ -261,20 +292,24 @@ header h1 {
 
 .playlist-info {
     color: var(--text-secondary);
-    font-size: 0.9rem;
-    margin-bottom: 8px;
+    font-size: 0.8rem;
+    margin-bottom: 6px;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
 }
 
 .playlist-badges {
     display: flex;
-    gap: 6px;
+    gap: 4px;
     flex-wrap: wrap;
 }
 
 .mini-badge {
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-size: 0.75rem;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 0.7rem;
     font-weight: 600;
     background: var(--secondary-color);
     color: white;
@@ -291,15 +326,15 @@ header h1 {
 /* Images Grid */
 .images-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 16px;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px;
 }
 
 .image-card {
     background: var(--bg-color);
     border: 2px solid var(--border-color);
-    border-radius: 10px;
-    padding: 12px;
+    border-radius: 8px;
+    padding: 10px;
     transition: all 0.2s;
     position: relative;
 }
@@ -316,15 +351,15 @@ header h1 {
 
 .image-preview {
     width: 100%;
-    height: 150px;
+    height: 120px;
     background: var(--secondary-color);
     border-radius: 6px;
     display: flex;
     align-items: center;
     justify-content: center;
     color: white;
-    font-size: 3rem;
-    margin-bottom: 8px;
+    font-size: 2.5rem;
+    margin-bottom: 6px;
     overflow: hidden;
     position: relative;
 }
@@ -347,23 +382,23 @@ header h1 {
     justify-content: center;
     color: white;
     font-weight: bold;
-    font-size: 1.2rem;
+    font-size: 0.9rem;
 }
 
 .image-name {
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     font-weight: 500;
     color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    margin-bottom: 4px;
+    margin-bottom: 3px;
 }
 
 .image-info {
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     color: var(--text-secondary);
-    margin-bottom: 8px;
+    margin-bottom: 6px;
 }
 
 .image-actions {
@@ -620,40 +655,80 @@ footer {
 /* Responsive Design */
 @media (max-width: 768px) {
     .container {
-        padding: 12px;
+        padding: 8px;
+    }
+
+    header {
+        padding: 10px 12px;
+        margin-bottom: 12px;
+    }
+
+    .header-top {
+        margin-bottom: 6px;
     }
 
     header h1 {
-        font-size: 1.5rem;
+        font-size: 1.1rem;
+    }
+
+    .user-info {
+        display: none;
     }
 
     .status-bar {
-        flex-direction: column;
-        gap: 12px;
+        gap: 10px;
+        font-size: 0.75rem;
+    }
+
+    .status-item {
+        gap: 4px;
+    }
+
+    .control-panel {
+        padding: 10px 12px;
+        margin-bottom: 12px;
     }
 
     .controls {
-        flex-direction: column;
+        gap: 6px;
     }
 
-    .btn-large {
-        width: 100%;
+    .help-text {
+        display: none;
+    }
+
+    .btn {
+        padding: 6px 12px;
+        font-size: 0.85rem;
     }
 
     .section-header {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 12px;
+        flex-direction: row;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 12px;
+    }
+
+    .section-header h2 {
+        font-size: 1rem;
+    }
+
+    .playlists-section,
+    .images-section,
+    .schedules-section {
+        padding: 12px;
+        margin-bottom: 12px;
     }
 
     .playlists-grid,
     .images-grid {
         grid-template-columns: 1fr;
+        gap: 12px;
     }
 
     #toast-container {
-        left: 12px;
-        right: 12px;
+        left: 8px;
+        right: 8px;
     }
 
     .toast {
@@ -685,11 +760,11 @@ footer {
 /* Video-specific styles */
 .type-badge {
     display: inline-block;
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-size: 0.75rem;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 0.7rem;
     font-weight: 600;
-    margin-right: 8px;
+    margin-right: 6px;
 }
 
 .type-badge.image {

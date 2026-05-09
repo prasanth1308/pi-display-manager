@@ -9,37 +9,27 @@
   <body>
     <div class="container">
       <header>
-        <div
-          style="
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-          "
-        >
+        <div class="header-top">
           <h1>🖼️ Pi Display Manager</h1>
-          <div style="display: flex; align-items: center; gap: 16px">
-            <span id="user-info" style="color: #718096; font-size: 14px"></span>
-            <button
-              id="logout-btn"
-              class="btn btn-secondary"
-              style="padding: 8px 16px"
-            >
-              🚪 Logout
+          <div class="header-actions">
+            <span id="user-info" class="user-info"></span>
+            <button id="logout-btn" class="btn btn-secondary btn-sm">
+              🚪
             </button>
           </div>
         </div>
         <div class="status-bar">
           <div class="status-item">
-            <span class="label">Status:</span>
+            <span class="status-label">Status:</span>
             <span id="status" class="badge">Stopped</span>
           </div>
           <div class="status-item">
-            <span class="label">Active Playlist:</span>
-            <span id="active-playlist">None</span>
+            <span class="status-label">Playlist:</span>
+            <span id="active-playlist" class="status-value">None</span>
           </div>
           <div class="status-item">
-            <span class="label">Images:</span>
-            <span id="image-count">0</span>
+            <span class="status-label">Images:</span>
+            <span id="image-count" class="status-value">0</span>
           </div>
         </div>
       </header>
@@ -47,16 +37,15 @@
       <main>
         <!-- Control Panel -->
         <section class="control-panel">
-          <h2>Slideshow Controls</h2>
           <div class="controls">
-            <button id="play-btn" class="btn btn-primary btn-large" disabled>
-              ▶️ Play Slideshow
+            <button id="play-btn" class="btn btn-primary" disabled>
+              ▶️ Play
             </button>
-            <button id="stop-btn" class="btn btn-danger btn-large" disabled>
-              ⏹️ Stop Slideshow
+            <button id="stop-btn" class="btn btn-danger" disabled>
+              ⏹️ Stop
             </button>
+            <span class="help-text">Select a playlist to enable playback</span>
           </div>
-          <p class="help-text">Select a playlist below to enable playback</p>
         </section>
 
         <!-- Playlists Section -->
