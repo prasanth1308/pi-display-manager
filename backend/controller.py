@@ -30,7 +30,7 @@ from service import (
     get_status, start_slideshow, stop_slideshow, clear_framebuffer,
     list_playlists, create_playlist, update_playlist, delete_playlist,
     get_playlist_images_list, get_playlist_videos_list,
-    upload_image, delete_image, delete_video,
+    upload_image, upload_video, delete_image, delete_video,
     skip_image, unskip_image,
     parse_multipart_form_data, download_youtube_video,
     start_video_playback, stop_video_playback, get_playlist_videos,
@@ -319,7 +319,7 @@ class APIHandler(BaseHTTPRequestHandler):
                 response = create_playlist(name, playlist_type, delay)
             
             elif path.startswith("/api/playlists/") and "/upload" in path:
-                # Upload image to playlist
+                # Upload file to playlist (image or video)
                 playlist_id = path.split("/")[3]
                 content_type = self.headers.get('Content-Type', '')
                 
@@ -332,11 +332,23 @@ class APIHandler(BaseHTTPRequestHandler):
                     file_info = parse_multipart_form_data(content_type, body)
                     
                     if file_info and file_info.get('filename') and file_info.get('data'):
-                        response = upload_image(
-                            playlist_id,
-                            file_info['data'],
-                            file_info['filename']
-                        )
+                        filename = file_info['filename']
+                        file_ext = filename.lower().split('.')[-1] if '.' in filename else ''
+                        
+                        # Check if it's a video file
+                        video_extensions = ['mp4', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'webm']
+                        if file_ext in video_extensions:
+                            response = upload_video(
+                                playlist_id,
+                                file_info['data'],
+                                file_info['filename']
+                            )
+                        else:
+                            response = upload_image(
+                                playlist_id,
+                                file_info['data'],
+                                file_info['filename']
+                            )
                     else:
                         response = {"status": "error", "message": "No valid file uploaded"}
                 else:

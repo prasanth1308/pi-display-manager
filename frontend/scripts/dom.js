@@ -42,6 +42,7 @@ const DOM = {
   activePlaylistSpan: document.getElementById("active-playlist"),
   imageCountSpan: document.getElementById("image-count"),
   selectedPlaylistName: document.getElementById("selected-playlist-name"),
+  videoUploadNote: document.getElementById("video-upload-note"),
 
   // Progress & Loading
   downloadStatusDiv: document.getElementById("download-status"),

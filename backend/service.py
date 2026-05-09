@@ -786,6 +786,53 @@ def upload_image(playlist_id, file_data, filename):
         return {"status": "error", "message": str(e)}
 
 
+def upload_video(playlist_id, file_data, filename):
+    """Upload a video to a playlist"""
+    if playlist_id not in playlists_db["playlists"]:
+        return {"status": "error", "message": "Playlist not found"}
+    
+    # Check if playlist is video type
+    if playlists_db["playlists"][playlist_id].get("type") != "video":
+        return {"status": "error", "message": "Not a video playlist"}
+    
+    # Check if playlist already has a video
+    existing_videos = get_playlist_videos(playlist_id)
+    if existing_videos:
+        return {"status": "error", "message": "Playlist already contains a video. Delete existing video first."}
+    
+    # Validate file extension
+    valid_extensions = {".mp4", ".avi", ".mkv", ".mov", ".wmv", ".flv", ".webm"}
+    file_ext = Path(filename).suffix.lower()
+    if file_ext not in valid_extensions:
+        return {"status": "error", "message": "Invalid video file type"}
+    
+    # Save file to playlist folder
+    playlist_dir = PLAYLISTS_DIR / playlist_id
+    file_path = playlist_dir / filename
+    
+    # Handle duplicate names
+    counter = 1
+    while file_path.exists():
+        name_stem = Path(filename).stem
+        file_path = playlist_dir / f"{name_stem}_{counter}{file_ext}"
+        counter += 1
+    
+    try:
+        with open(file_path, 'wb') as f:
+            f.write(file_data)
+        
+        # Update video count
+        videos = get_playlist_videos(playlist_id)
+        playlists_db["playlists"][playlist_id]["video_count"] = len(videos)
+        save_playlists_db()
+        
+        logger.info("Uploaded video to playlist %s: %s", playlist_id, file_path.name)
+        return {"status": "success", "message": "Video uploaded successfully", "filename": file_path.name}
+    except Exception as e:
+        logger.error("Failed to upload video: %s", e)
+        return {"status": "error", "message": str(e)}
+
+
 def skip_image(playlist_id, filename):
     """Mark an image as skipped in the playlist"""
     if playlist_id not in playlists_db["playlists"]:
@@ -1179,6 +1226,13 @@ def start_video_playback(playlist_id):
                 "--loop",
                 "--no-video-title-show",
                 "--no-audio",
+                "--vout-filter=croppadd",
+                "--croppadd-croptop=0",
+                "--croppadd-cropbottom=0",
+                "--croppadd-cropleft=0",
+                "--croppadd-cropright=0",
+                "--width=1920",
+                "--height=1080",
                 video_path
             ]
         else:
@@ -1191,6 +1245,13 @@ def start_video_playback(playlist_id):
                 "--loop",
                 "--no-video-title-show",
                 "--no-audio",
+                "--vout-filter=croppadd",
+                "--croppadd-croptop=0",
+                "--croppadd-cropbottom=0",
+                "--croppadd-cropleft=0",
+                "--croppadd-cropright=0",
+                "--width=1920",
+                "--height=1080",
                 video_path
             ]
         

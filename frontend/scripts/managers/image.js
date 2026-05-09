@@ -69,7 +69,7 @@ const ImageManager = {
   },
 
   /**
-   * Handle file upload
+   * Handle file upload (images or videos)
    */
   async upload(event) {
     const files = Array.from(event.target.files);
@@ -81,6 +81,19 @@ const ImageManager = {
       return;
     }
 
+    // Check if any file is a video
+    const videoExtensions = ['mp4', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'webm'];
+    const hasVideo = files.some(file => {
+      const ext = file.name.split('.').pop().toLowerCase();
+      return videoExtensions.includes(ext);
+    });
+
+    // If video, only allow 1 file
+    if (hasVideo && files.length > 1) {
+      UI.showToast("Only one video can be uploaded at a time", TOAST_TYPES.WARNING);
+      return;
+    }
+
     UI.showLoading();
 
     let successCount = 0;
@@ -88,7 +101,11 @@ const ImageManager = {
 
     for (const file of files) {
       const formData = new FormData();
-      formData.append("image", file);
+      const ext = file.name.split('.').pop().toLowerCase();
+      const isVideo = videoExtensions.includes(ext);
+      
+      // Use appropriate form field name
+      formData.append(isVideo ? "video" : "image", file);
 
       const data = await API.uploadImage(AppState.selectedPlaylistId, formData);
 
@@ -96,23 +113,36 @@ const ImageManager = {
         successCount++;
       } else {
         failCount++;
+        if (data && data.message) {
+          UI.showToast(data.message, TOAST_TYPES.ERROR);
+        }
       }
     }
 
     UI.hideLoading();
 
     if (successCount > 0) {
+      const fileType = hasVideo ? "video" : "image";
+      const plural = successCount !== 1 && !hasVideo ? "s" : "";
       UI.showToast(
-        `${successCount} image${successCount !== 1 ? "s" : ""} uploaded successfully`,
+        `${successCount} ${fileType}${plural} uploaded successfully`,
         TOAST_TYPES.SUCCESS,
       );
-      this.load(AppState.selectedPlaylistId);
+      
+      // Reload appropriate content type
+      if (hasVideo) {
+        await VideoManager.load(AppState.selectedPlaylistId);
+      } else {
+        await this.load(AppState.selectedPlaylistId);
+      }
       PlaylistManager.load(); // Refresh to update counts
     }
 
     if (failCount > 0) {
+      const fileType = hasVideo ? "video" : "image";
+      const plural = failCount !== 1 && !hasVideo ? "s" : "";
       UI.showToast(
-        `${failCount} image${failCount !== 1 ? "s" : ""} failed to upload`,
+        `${failCount} ${fileType}${plural} failed to upload`,
         TOAST_TYPES.ERROR,
       );
     }

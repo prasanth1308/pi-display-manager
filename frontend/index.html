@@ -69,7 +69,7 @@
         >
           <div class="section-header">
             <h2>Content in <span id="selected-playlist-name"></span></h2>
-            <div>
+            <div class="section-controls">
               <button
                 id="upload-image-btn"
                 class="btn btn-primary"
@@ -88,6 +88,9 @@
                 Close
               </button>
             </div>
+            <p class="help-text" id="video-upload-note" style="display: none; margin-top: 8px; color: var(--warning-color);">
+              ⚠️ Upload only 1080p videos. Higher resolutions will be downscaled to 1080p during playback.
+            </p>
           </div>
 
           <!-- Download Progress Section -->
@@ -110,7 +113,7 @@
           <input
             type="file"
             id="file-input"
-            accept="image/*"
+            accept="image/*,video/*"
             multiple
             style="display: none"
           />
