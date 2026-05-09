@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
 """
-Pi Display Manager - FastAPI Entry Point
+Pi Display Manager - Flask Entry Point
 Main entry point that imports from service and controller layers.
-Modern REST API with FastAPI framework.
+Lightweight REST API with Flask framework.
 """
 
 import signal
 import sys
-import uvicorn
 
-# Import FastAPI app
-from controllers.controller_fastapi import app
+# Import Flask app
+from controllers.controller import app, initialize_app
 
 # Import service layer for configuration
 from services.service import config, logger, stop_scheduler, stop_slideshow
@@ -21,7 +20,7 @@ def signal_handler(sig, frame):
     logger.info("\nReceived signal %d, shutting down...", sig)
     stop_scheduler()
     stop_slideshow()
-    logger.info("Pi Display Manager FastAPI service stopped")
+    logger.info("Pi Display Manager Flask service stopped")
     sys.exit(0)
 
 
@@ -31,23 +30,22 @@ if __name__ == "__main__":
     signal.signal(signal.SIGTERM, signal_handler)
     
     try:
+        # Initialize application
+        initialize_app()
+        
         port = config.get("api_port", 8000) if config else 8000
         
         print("=" * 70)
-        print("🚀 Pi Display Manager - FastAPI Server")
+        print("🚀 Pi Display Manager - Flask Server")
         print("=" * 70)
         print(f"📡 API Server: http://localhost:{port}")
-        print(f"📚 API Docs: http://localhost:{port}/docs")
-        print(f"🔍 ReDoc: http://localhost:{port}/redoc")
         print("=" * 70)
         
-        uvicorn.run(
-            "controllers.controller_fastapi:app",
+        app.run(
             host="0.0.0.0",
             port=port,
-            reload=False,
-            log_level="info",
-            access_log=False  # Use our custom logging
+            threaded=True,
+            debug=False
         )
     except Exception as e:
         if logger:

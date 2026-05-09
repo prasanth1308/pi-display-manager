@@ -77,9 +77,9 @@ http://localhost:8000
 ```
 pi-display-manager/
 ├── backend/                   # Backend API (MVC Architecture)
-│   ├── slideshow_api.py      # Main entry point (FastAPI)
+│   ├── slideshow_api.py      # Main entry point (Flask)
 │   ├── controllers/          # Controller layer
-│   │   └── controller_fastapi.py  # FastAPI controller
+│   │   └── controller.py     # Flask REST API controller
 │   ├── services/             # Service layer (business logic)
 │   │   ├── service.py        # Core business logic
 │   │   └── auth.py           # Authentication service
@@ -137,14 +137,14 @@ The backend follows an **MVC (Model-View-Controller)** pattern:
 
 - **`auth.py`** - Authentication service handling user login and session management
 
-- **`controller_fastapi.py`** - FastAPI controller with modern REST API:
-  - RESTful API endpoints with automatic documentation
-  - Request routing with type validation
-  - Dependency injection for authentication
+- **`controller.py`** - Flask controller with lightweight REST API:
+  - RESTful API endpoints
+  - Request routing with decorator-based authentication
+  - JSON request/response handling
   - Static file serving
   - Comprehensive error handling
 
-- **`slideshow_api.py`** - Entry point that initializes and runs the FastAPI application
+- **`slideshow_api.py`** - Entry point that initializes and runs the Flask application
 
 ## Configuration
 
