@@ -1174,6 +1174,9 @@ def parse_multipart_form_data_streaming(content_type, file_obj, content_length, 
 
 def parse_multipart_form_data(content_type, body, expected_field="image"):
     """Parse multipart/form-data without using deprecated cgi module (for small files)"""
+    logger.info("[PARSE-SMALL] Starting in-memory parser - body size: %d bytes, expected_field: %s", 
+               len(body), expected_field)
+    
     try:
         # Extract boundary from content type
         boundary = None
@@ -1184,20 +1187,27 @@ def parse_multipart_form_data(content_type, body, expected_field="image"):
                 break
         
         if not boundary:
+            logger.error("[PARSE-SMALL] No boundary found in Content-Type")
             return None
+        
+        logger.info("[PARSE-SMALL] Boundary extracted: %s", boundary[:50])
         
         # Split body by boundary
         boundary_bytes = ('--' + boundary).encode()
         parts = body.split(boundary_bytes)
+        logger.info("[PARSE-SMALL] Split into %d parts", len(parts))
         
         for part in parts:
             if not part or part == b'--\r\n' or part == b'--':
                 continue
             
+            logger.debug("[PARSE-SMALL] Processing part of size: %d bytes", len(part))
+            
             # Split headers and content
             try:
                 header_end = part.find(b'\r\n\r\n')
                 if header_end == -1:
+                    logger.debug("[PARSE-SMALL] No header separator found, skipping part")
                     continue
                 
                 headers_data = part[:header_end]
@@ -1207,10 +1217,14 @@ def parse_multipart_form_data(content_type, body, expected_field="image"):
                 if content.endswith(b'\r\n'):
                     content = content[:-2]
                 
+                logger.debug("[PARSE-SMALL] Content size after trimming: %d bytes", len(content))
+                
                 # Parse headers
                 headers_str = headers_data.decode('utf-8', errors='ignore')
                 filename = None
                 field_name = None
+                
+                logger.debug("[PARSE-SMALL] Headers: %s", headers_str[:200])
                 
                 for line in headers_str.split('\r\n'):
                     if line.startswith('Content-Disposition:'):
@@ -1222,17 +1236,23 @@ def parse_multipart_form_data(content_type, body, expected_field="image"):
                             elif 'name=' in param:
                                 field_name = param.split('=', 1)[1].strip('"')
                 
+                logger.info("[PARSE-SMALL] Parsed - field_name: %s, filename: %s, content_len: %d, expected: %s", 
+                           field_name, filename, len(content) if content else 0, expected_field)
+                
                 if field_name == expected_field and filename and content:
+                    logger.info("[PARSE-SMALL] SUCCESS - returning file: %s (%d bytes)", filename, len(content))
                     return {'filename': filename, 'data': content}
             
             except Exception as e:
-                logger.error("Error parsing multipart section: %s", e)
+                logger.error("[PARSE-SMALL] Error parsing multipart section: %s", e)
                 continue
         
+        logger.warning("[PARSE-SMALL] No matching file found after processing all parts")
         return None
     
     except Exception as e:
-        logger.error("Error parsing multipart form data: %s", e)
+        logger.error("[PARSE-SMALL] EXCEPTION in parser: %s", e, exc_info=True)
+        return None
         return None
 
 

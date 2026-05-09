@@ -338,12 +338,18 @@ class APIHandler(BaseHTTPRequestHandler):
                 playlist_id = path.split("/")[3]
                 content_type = self.headers.get('Content-Type', '')
                 
+                logger.info("[UPLOAD-HANDLER] Received upload request for playlist: %s", playlist_id)
+                logger.info("[UPLOAD-HANDLER] Content-Type: %s", content_type[:100])
+                
                 if 'multipart/form-data' in content_type:
                     content_length = int(self.headers.get('Content-Length', 0))
+                    logger.info("[UPLOAD-HANDLER] Content-Length: %d bytes (%.2f MB)", 
+                               content_length, content_length / (1024 * 1024))
                     
                     # Check if content length suggests a video (>10MB = likely video)
                     # Use streaming for large files to avoid RAM exhaustion
                     if content_length > 10 * 1024 * 1024:  # 10MB threshold
+                        logger.info("[UPLOAD-HANDLER] Using STREAMING parser (file > 10MB)")
                         # Generate upload ID for progress tracking
                         upload_id = str(uuid.uuid4())[:8]
                         
@@ -398,8 +404,12 @@ class APIHandler(BaseHTTPRequestHandler):
                             response = {"status": "error", "message": "No valid file uploaded"}
                     else:
                         # Small file - use in-memory parsing (original method)
+                        logger.info("[UPLOAD-HANDLER] Using IN-MEMORY parser (file < 10MB)")
                         body = self.rfile.read(content_length)
+                        logger.info("[UPLOAD-HANDLER] Read %d bytes from request body", len(body))
                         file_info = parse_multipart_form_data(content_type, body)
+                        logger.info("[UPLOAD-HANDLER] Parser returned: %s", 
+                                   file_info if file_info else "None")
                         
                         if file_info and file_info.get('filename') and file_info.get('data'):
                             filename = file_info['filename']
@@ -425,8 +435,10 @@ class APIHandler(BaseHTTPRequestHandler):
                                     filename
                                 )
                         else:
+                            logger.error("[UPLOAD-HANDLER] No valid file uploaded - file_info: %s", file_info)
                             response = {"status": "error", "message": "No valid file uploaded"}
                 else:
+                    logger.error("[UPLOAD-HANDLER] Invalid Content-Type: %s", content_type)
                     response = {"status": "error", "message": "Content must be multipart/form-data"}
             
             elif path.startswith("/api/playlists/") and "/download" in path:
