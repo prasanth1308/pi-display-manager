@@ -1283,45 +1283,15 @@ def downscale_video_to_1080p(video_path, downscale_id=None):
         logger.info("[DOWNSCALE-HARDWARE] Running: %s", ' '.join(ffmpeg_cmd))
         success = _run_ffmpeg_with_progress(ffmpeg_cmd, duration, downscale_id, "hardware", timeout=600)
         
-        # If hardware encoding failed, try software with optimized settings
         if not success:
-            logger.warning("[DOWNSCALE] Hardware encoding failed, trying software encoding...")
-            if downscale_id:
-                downscale_status[downscale_id] = {
-                    "status": "downscaling",
-                    "progress": 5,
-                    "message": "Hardware encoding failed, using software encoding..."
-                }
-            
-            ffmpeg_cmd = [
-                'ffmpeg', '-i', str(video_path),
-                '-vf', 'scale=-2:1080',
-                '-c:v', 'libx264',
-                '-preset', 'veryfast',  # Faster than medium, better quality than ultrafast
-                '-crf', '23',  # Better quality (lower = better)
-                '-threads', '2',  # Limit CPU usage on Raspberry Pi
-                '-r', '30',  # Fix frame rate to 30fps
-                '-c:a', 'aac',  # Re-encode audio to AAC
-                '-b:a', '128k',
-                '-ar', '44100',
-                '-ac', '2',
-                '-max_muxing_queue_size', '1024',
-                '-progress', 'pipe:1',
-                '-y',
-                str(temp_output)
-            ]
-            logger.info("[DOWNSCALE-SOFTWARE] Running: %s", ' '.join(ffmpeg_cmd))
-            success = _run_ffmpeg_with_progress(ffmpeg_cmd, duration, downscale_id, "software", timeout=900)
-        
-        if not success:
-            logger.error("[DOWNSCALE] ffmpeg failed")
+            logger.error("[DOWNSCALE] Hardware encoding failed")
             if temp_output and temp_output.exists():
                 temp_output.unlink()
             if downscale_id:
                 downscale_status[downscale_id] = {
                     "status": "error",
                     "progress": 0,
-                    "message": "Downscaling failed"
+                    "message": "Hardware encoding failed"
                 }
             return False
         
