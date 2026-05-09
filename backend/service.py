@@ -1264,20 +1264,36 @@ def downscale_video_to_1080p(video_path):
         # Create temp output file
         temp_output = video_path.parent / f".downscaling_{video_path.name}"
         
-        # Downscale using ffmpeg with hardware acceleration if available
+        # Try hardware-accelerated encoding first (h264_omx for Raspberry Pi)
+        # Falls back to software encoding if hardware not available
         ffmpeg_cmd = [
             'ffmpeg', '-i', str(video_path),
             '-vf', 'scale=-2:1080',  # Maintain aspect ratio, height=1080
-            '-c:v', 'libx264',  # H.264 codec
-            '-preset', 'fast',  # Fast encoding
-            '-crf', '23',  # Quality (lower = better, 23 is default)
+            '-c:v', 'h264_omx',  # Hardware codec for Raspberry Pi
+            '-b:v', '2M',  # 2Mbps bitrate
             '-c:a', 'copy',  # Copy audio without re-encoding
             '-y',  # Overwrite output
             str(temp_output)
         ]
         
-        logger.info("[DOWNSCALE] Running: %s", ' '.join(ffmpeg_cmd))
-        result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, timeout=300)
+        logger.info("[DOWNSCALE] Running with hardware acceleration: %s", ' '.join(ffmpeg_cmd))
+        result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, timeout=600)
+        
+        # If hardware encoding failed, try software with ultrafast preset
+        if result.returncode != 0:
+            logger.warning("[DOWNSCALE] Hardware encoding failed, trying software encoding...")
+            ffmpeg_cmd = [
+                'ffmpeg', '-i', str(video_path),
+                '-vf', 'scale=-2:1080',
+                '-c:v', 'libx264',
+                '-preset', 'ultrafast',  # Fastest preset
+                '-crf', '28',  # Lower quality for speed
+                '-c:a', 'copy',
+                '-y',
+                str(temp_output)
+            ]
+            logger.info("[DOWNSCALE] Running with software encoding: %s", ' '.join(ffmpeg_cmd))
+            result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, timeout=900)
         
         if result.returncode != 0:
             logger.error("[DOWNSCALE] ffmpeg failed: %s", result.stderr)
@@ -1291,12 +1307,14 @@ def downscale_video_to_1080p(video_path):
         return True
         
     except subprocess.TimeoutExpired:
-        logger.error("[DOWNSCALE] Downscaling timed out")
-        if temp_output.exists():
+        logger.error("[DOWNSCALE] Downscaling timed out (video too long or CPU too slow)")
+        if 'temp_output' in locals() and temp_output.exists():
             temp_output.unlink()
         return False
     except Exception as e:
         logger.error("[DOWNSCALE] Downscaling failed: %s", str(e))
+        if 'temp_output' in locals() and temp_output.exists():
+            temp_output.unlink()
         return False
 
 
