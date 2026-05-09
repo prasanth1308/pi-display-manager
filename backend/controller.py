@@ -8,7 +8,7 @@ import uuid
 import threading
 import tempfile
 from pathlib import Path
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs, unquote
 import signal
 import sys
@@ -763,8 +763,9 @@ def run_server():
     logger.info("  Data Directory: %s", DATA_DIR)
     logger.info("  Playlists Directory: %s", PLAYLISTS_DIR)
 
-    server = HTTPServer(("0.0.0.0", port), APIHandler)
-    logger.info("HTTP server listening on 0.0.0.0:%d", port)
+    server = ThreadingHTTPServer(("0.0.0.0", port), APIHandler)
+    server.daemon_threads = True  # Allow threads to be killed on shutdown
+    logger.info("HTTP server listening on 0.0.0.0:%d (multi-threaded)", port)
     logger.info("Web interface: http://localhost:%d", port)
 
     try:
