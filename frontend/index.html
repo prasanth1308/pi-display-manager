@@ -260,6 +260,46 @@
         </div>
       </div>
 
+      <!-- Modal for Edit Playlist -->
+      <div id="edit-playlist-modal" class="modal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3>Edit Playlist Settings</h3>
+            <span class="close">&times;</span>
+          </div>
+          <div class="modal-body">
+            <label for="edit-playlist-name">Playlist Name:</label>
+            <input
+              type="text"
+              id="edit-playlist-name"
+              placeholder="Enter playlist name"
+              class="input-field"
+            />
+
+            <label for="edit-playlist-delay">Slide Delay (seconds):</label>
+            <input
+              type="number"
+              id="edit-playlist-delay"
+              placeholder="5"
+              min="1"
+              max="60"
+              class="input-field"
+            />
+            <small style="color: #888; display: block; margin-top: 4px;">
+              Delay between slides (1-60 seconds)
+            </small>
+          </div>
+          <div class="modal-footer">
+            <button id="cancel-edit-playlist-btn" class="btn btn-secondary">
+              Cancel
+            </button>
+            <button id="save-edit-playlist-btn" class="btn btn-success">
+              Save Changes
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- Modal for Schedule -->
       <div id="schedule-modal" class="modal">
         <div class="modal-content">

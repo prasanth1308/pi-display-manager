@@ -23,6 +23,14 @@ const EventListeners = {
       PlaylistManager.hideCreateModal(),
     );
 
+    // Edit playlist controls
+    document
+      .getElementById("save-edit-playlist-btn")
+      .addEventListener("click", () => PlaylistManager.saveEdit());
+    document
+      .getElementById("cancel-edit-playlist-btn")
+      .addEventListener("click", () => PlaylistManager.hideEditModal());
+
     // Content controls
     DOM.uploadImageBtn.addEventListener("click", () => DOM.fileInput.click());
     DOM.downloadVideoTriggerBtn.addEventListener("click", () =>
@@ -46,6 +54,10 @@ const EventListeners = {
       if (e.target === DOM.playlistModal) PlaylistManager.hideCreateModal();
     });
 
+    DOM.editPlaylistModal.addEventListener("click", (e) => {
+      if (e.target === DOM.editPlaylistModal) PlaylistManager.hideEditModal();
+    });
+
     DOM.videoModal.addEventListener("click", (e) => {
       if (e.target === DOM.videoModal) VideoManager.hideDownloadModal();
     });
@@ -53,6 +65,9 @@ const EventListeners = {
     document
       .querySelector(".close")
       .addEventListener("click", () => PlaylistManager.hideCreateModal());
+    DOM.editPlaylistModal
+      .querySelector(".close")
+      .addEventListener("click", () => PlaylistManager.hideEditModal());
     document
       .querySelector(".close-video")
       .addEventListener("click", () => VideoManager.hideDownloadModal());
@@ -60,6 +75,14 @@ const EventListeners = {
     // Keyboard shortcuts
     DOM.playlistNameInput.addEventListener("keypress", (e) => {
       if (e.key === "Enter") PlaylistManager.create();
+    });
+
+    DOM.editPlaylistNameInput.addEventListener("keypress", (e) => {
+      if (e.key === "Enter") PlaylistManager.saveEdit();
+    });
+
+    DOM.editPlaylistDelayInput.addEventListener("keypress", (e) => {
+      if (e.key === "Enter") PlaylistManager.saveEdit();
     });
 
     DOM.videoUrlInput.addEventListener("keypress", (e) => {

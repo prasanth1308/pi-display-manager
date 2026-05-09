@@ -4,6 +4,8 @@
  */
 
 const PlaylistManager = {
+  currentEditPlaylistId: null,
+
   /**
    * Load and display all playlists
    */
@@ -150,6 +152,25 @@ const PlaylistManager = {
   },
 
   /**
+   * Show edit playlist modal
+   */
+  showEditModal(playlist) {
+    this.currentEditPlaylistId = playlist.id;
+    DOM.editPlaylistNameInput.value = playlist.name;
+    DOM.editPlaylistDelayInput.value = playlist.delay || 5;
+    DOM.editPlaylistModal.classList.add("show");
+    DOM.editPlaylistNameInput.focus();
+  },
+
+  /**
+   * Hide edit playlist modal
+   */
+  hideEditModal() {
+    DOM.editPlaylistModal.classList.remove("show");
+    this.currentEditPlaylistId = null;
+  },
+
+  /**
    * Create a new playlist
    */
   async create() {
@@ -187,25 +208,38 @@ const PlaylistManager = {
    * Edit playlist settings
    */
   async edit(playlist) {
-    const newName = prompt("Playlist name:", playlist.name);
-    if (newName === null) return; // User cancelled
+    this.showEditModal(playlist);
+  },
 
-    const newDelay = prompt("Slide delay (seconds):", playlist.delay || 5);
-    if (newDelay === null) return; // User cancelled
+  /**
+   * Save edited playlist settings
+   */
+  async saveEdit() {
+    const newName = DOM.editPlaylistNameInput.value.trim();
+    const delayValue = DOM.editPlaylistDelayInput.value.trim();
 
-    const delay = parseInt(newDelay);
+    // Validate name
+    if (!newName) {
+      UI.showToast("Playlist name cannot be empty", TOAST_TYPES.WARNING);
+      DOM.editPlaylistNameInput.focus();
+      return;
+    }
+
+    // Validate delay
+    const delay = parseInt(delayValue);
     if (isNaN(delay) || delay < 1 || delay > 60) {
       UI.showToast(
-        "Invalid delay value (must be 1-60 seconds)",
+        "Delay must be between 1 and 60 seconds",
         TOAST_TYPES.WARNING,
       );
+      DOM.editPlaylistDelayInput.focus();
       return;
     }
 
     UI.showLoading();
 
-    const data = await API.updatePlaylist(playlist.id, {
-      name: newName.trim() || playlist.name,
+    const data = await API.updatePlaylist(this.currentEditPlaylistId, {
+      name: newName,
       delay: delay,
     });
 
@@ -213,6 +247,7 @@ const PlaylistManager = {
 
     if (data && data.status === "success") {
       UI.showToast("Playlist updated successfully", TOAST_TYPES.SUCCESS);
+      this.hideEditModal();
       this.load();
     } else {
       UI.showToast(

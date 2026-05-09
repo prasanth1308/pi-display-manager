@@ -32,6 +32,9 @@ const DOM = {
 
   // Modals
   playlistModal: document.getElementById("playlist-modal"),
+  editPlaylistModal: document.getElementById("edit-playlist-modal"),
+  editPlaylistNameInput: document.getElementById("edit-playlist-name"),
+  editPlaylistDelayInput: document.getElementById("edit-playlist-delay"),
   videoModal: document.getElementById("video-modal"),
 
   // Status elements
