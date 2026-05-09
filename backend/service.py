@@ -1271,7 +1271,6 @@ def downscale_video_to_1080p(video_path):
             '-vf', 'scale=-2:1080',  # Maintain aspect ratio, height=1080
             '-c:v', 'h264_omx',  # Hardware codec for Raspberry Pi
             '-b:v', '2M',  # 2Mbps bitrate
-            '-vsync', 'cfr',  # Constant frame rate (preserve timing)
             '-c:a', 'copy',  # Copy audio without re-encoding
             '-y',  # Overwrite output
             str(temp_output)
@@ -1288,8 +1287,7 @@ def downscale_video_to_1080p(video_path):
                 '-vf', 'scale=-2:1080',
                 '-c:v', 'libx264',
                 '-preset', 'ultrafast',  # Fastest preset
-                '-crf', '28',  # Lower quality for speed
-                '-vsync', 'cfr',  # Constant frame rate (preserve timing)
+                '-crf', '30',  # Lower quality for speed
                 '-c:a', 'copy',
                 '-y',
                 str(temp_output)
