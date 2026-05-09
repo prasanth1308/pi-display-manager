@@ -9,56 +9,44 @@
   <body>
     <div class="container">
       <header>
-        <div
-          style="
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-          "
-        >
+        <div class="header-top">
           <h1>🖼️ Pi Display Manager</h1>
-          <div style="display: flex; align-items: center; gap: 16px">
-            <span id="user-info" style="color: #718096; font-size: 14px"></span>
-            <button
-              id="logout-btn"
-              class="btn btn-secondary"
-              style="padding: 8px 16px"
-            >
-              🚪 Logout
+          <div class="header-controls">
+            <button id="play-btn" class="btn btn-primary btn-sm" disabled>
+              ▶️ Play
+            </button>
+            <button id="stop-btn" class="btn btn-danger btn-sm" disabled>
+              ⏹️ Stop
+            </button>
+          </div>
+          <div class="header-actions">
+            <span id="user-info" class="user-info"></span>
+            <button id="logout-btn" class="btn btn-secondary btn-sm" title="Logout">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                <polyline points="16 17 21 12 16 7"></polyline>
+                <line x1="21" y1="12" x2="9" y2="12"></line>
+              </svg>
             </button>
           </div>
         </div>
         <div class="status-bar">
           <div class="status-item">
-            <span class="label">Status:</span>
+            <span class="status-label">Status:</span>
             <span id="status" class="badge">Stopped</span>
           </div>
           <div class="status-item">
-            <span class="label">Active Playlist:</span>
-            <span id="active-playlist">None</span>
+            <span class="status-label">Playlist:</span>
+            <span id="active-playlist" class="status-value">None</span>
           </div>
           <div class="status-item">
-            <span class="label">Images:</span>
-            <span id="image-count">0</span>
+            <span class="status-label">Images:</span>
+            <span id="image-count" class="status-value">0</span>
           </div>
         </div>
       </header>
 
       <main>
-        <!-- Control Panel -->
-        <section class="control-panel">
-          <h2>Slideshow Controls</h2>
-          <div class="controls">
-            <button id="play-btn" class="btn btn-primary btn-large" disabled>
-              ▶️ Play Slideshow
-            </button>
-            <button id="stop-btn" class="btn btn-danger btn-large" disabled>
-              ⏹️ Stop Slideshow
-            </button>
-          </div>
-          <p class="help-text">Select a playlist below to enable playback</p>
-        </section>
-
         <!-- Playlists Section -->
         <section class="playlists-section">
           <div class="section-header">
@@ -189,9 +177,6 @@
             </div>
 
             <div class="idle-row" style="margin-top: 8px">
-              <button id="idle-save-btn" class="btn btn-primary">
-                Save &amp; Apply
-              </button>
               <span
                 id="idle-save-status"
                 class="help-text"
@@ -199,7 +184,6 @@
               ></span>
             <div class="idle-row" style="margin-top:8px; gap:10px;">
               <button id="idle-save-btn" class="btn btn-primary">Save &amp; Apply</button>
-              <button id="idle-stop-btn" class="btn btn-secondary">Stop &amp; Restore Terminal</button>
               <span id="idle-save-status" class="help-text" style="margin-left:4px;"></span>
             </div>
           </div>
@@ -241,6 +225,17 @@
               <option value="image">Image Playlist</option>
               <option value="video">Video Playlist (YouTube)</option>
             </select>
+
+            <label for="playlist-delay">Slide Delay (seconds):</label>
+            <input
+              type="number"
+              id="playlist-delay"
+              placeholder="5"
+              value="5"
+              min="1"
+              max="60"
+              class="input-field"
+            />
           </div>
           <div class="modal-footer">
             <button id="cancel-playlist-btn" class="btn btn-secondary">
@@ -248,6 +243,46 @@
             </button>
             <button id="create-playlist-btn" class="btn btn-success">
               Create
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal for Edit Playlist -->
+      <div id="edit-playlist-modal" class="modal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3>Edit Playlist Settings</h3>
+            <span class="close">&times;</span>
+          </div>
+          <div class="modal-body">
+            <label for="edit-playlist-name">Playlist Name:</label>
+            <input
+              type="text"
+              id="edit-playlist-name"
+              placeholder="Enter playlist name"
+              class="input-field"
+            />
+
+            <label for="edit-playlist-delay">Slide Delay (seconds):</label>
+            <input
+              type="number"
+              id="edit-playlist-delay"
+              placeholder="5"
+              min="1"
+              max="60"
+              class="input-field"
+            />
+            <small style="color: #888; display: block; margin-top: 4px;">
+              Delay between slides (1-60 seconds)
+            </small>
+          </div>
+          <div class="modal-footer">
+            <button id="cancel-edit-playlist-btn" class="btn btn-secondary">
+              Cancel
+            </button>
+            <button id="save-edit-playlist-btn" class="btn btn-success">
+              Save Changes
             </button>
           </div>
         </div>

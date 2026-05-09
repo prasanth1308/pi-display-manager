@@ -13,9 +13,6 @@ const ContentManager = {
 
     UI.updateContentButtons(playlistType);
 
-    // Scroll to content section
-    DOM.imagesSection.scrollIntoView({ behavior: "smooth" });
-
     if (playlistType === CONTENT_TYPES.VIDEO) {
       await VideoManager.load(playlistId);
     } else {

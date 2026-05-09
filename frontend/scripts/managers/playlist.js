@@ -4,6 +4,8 @@
  */
 
 const PlaylistManager = {
+  currentEditPlaylistId: null,
+
   /**
    * Load and display all playlists
    */
@@ -70,12 +72,14 @@ const PlaylistManager = {
       <div class="playlist-header">
         <div class="playlist-name">${config.icon} ${UI.escapeHtml(playlist.name)}</div>
         <div class="playlist-actions">
+          ${playlist.id !== "default" ? '<button class="icon-btn edit-playlist" title="Edit Settings">⚙️</button>' : ""}
           ${playlist.id !== "default" ? '<button class="icon-btn delete-playlist" title="Delete">🗑️</button>' : ""}
         </div>
       </div>
       <div class="playlist-info">
         ${typeBadge}
         <span>${contentLabel}</span>
+        ${!isVideo ? `<span>⏱️ ${playlist.delay || 5}s</span>` : ""}
       </div>
       <div class="playlist-badges">
         ${badges.join("")}
@@ -84,7 +88,10 @@ const PlaylistManager = {
 
     // Click to select and view content
     card.addEventListener("click", (e) => {
-      if (!e.target.classList.contains("delete-playlist")) {
+      if (
+        !e.target.classList.contains("delete-playlist") &&
+        !e.target.classList.contains("edit-playlist")
+      ) {
         this.select(playlist.id, playlist.type || CONTENT_TYPES.IMAGE);
         ContentManager.show(
           playlist.id,
@@ -93,6 +100,15 @@ const PlaylistManager = {
         );
       }
     });
+
+    // Edit button
+    const editBtn = card.querySelector(".edit-playlist");
+    if (editBtn) {
+      editBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.edit(playlist);
+      });
+    }
 
     // Delete button
     const deleteBtn = card.querySelector(".delete-playlist");
@@ -136,11 +152,31 @@ const PlaylistManager = {
   },
 
   /**
+   * Show edit playlist modal
+   */
+  showEditModal(playlist) {
+    this.currentEditPlaylistId = playlist.id;
+    DOM.editPlaylistNameInput.value = playlist.name;
+    DOM.editPlaylistDelayInput.value = playlist.delay || 5;
+    DOM.editPlaylistModal.classList.add("show");
+    DOM.editPlaylistNameInput.focus();
+  },
+
+  /**
+   * Hide edit playlist modal
+   */
+  hideEditModal() {
+    DOM.editPlaylistModal.classList.remove("show");
+    this.currentEditPlaylistId = null;
+  },
+
+  /**
    * Create a new playlist
    */
   async create() {
     const name = DOM.playlistNameInput.value.trim();
     const type = DOM.playlistTypeSelect.value;
+    const delay = parseInt(DOM.playlistDelayInput.value) || 5;
 
     if (!name) {
       UI.showToast("Please enter a playlist name", TOAST_TYPES.WARNING);
@@ -149,7 +185,7 @@ const PlaylistManager = {
 
     UI.showLoading();
 
-    const data = await API.createPlaylist(name, type);
+    const data = await API.createPlaylist(name, type, delay);
 
     UI.hideLoading();
 
@@ -163,6 +199,59 @@ const PlaylistManager = {
     } else {
       UI.showToast(
         data?.message || "Failed to create playlist",
+        TOAST_TYPES.ERROR,
+      );
+    }
+  },
+
+  /**
+   * Edit playlist settings
+   */
+  async edit(playlist) {
+    this.showEditModal(playlist);
+  },
+
+  /**
+   * Save edited playlist settings
+   */
+  async saveEdit() {
+    const newName = DOM.editPlaylistNameInput.value.trim();
+    const delayValue = DOM.editPlaylistDelayInput.value.trim();
+
+    // Validate name
+    if (!newName) {
+      UI.showToast("Playlist name cannot be empty", TOAST_TYPES.WARNING);
+      DOM.editPlaylistNameInput.focus();
+      return;
+    }
+
+    // Validate delay
+    const delay = parseInt(delayValue);
+    if (isNaN(delay) || delay < 1 || delay > 60) {
+      UI.showToast(
+        "Delay must be between 1 and 60 seconds",
+        TOAST_TYPES.WARNING,
+      );
+      DOM.editPlaylistDelayInput.focus();
+      return;
+    }
+
+    UI.showLoading();
+
+    const data = await API.updatePlaylist(this.currentEditPlaylistId, {
+      name: newName,
+      delay: delay,
+    });
+
+    UI.hideLoading();
+
+    if (data && data.status === "success") {
+      UI.showToast("Playlist updated successfully", TOAST_TYPES.SUCCESS);
+      this.hideEditModal();
+      this.load();
+    } else {
+      UI.showToast(
+        data?.message || "Failed to update playlist",
         TOAST_TYPES.ERROR,
       );
     }

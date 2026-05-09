@@ -22,6 +22,7 @@ const DOM = {
   fileInput: document.getElementById("file-input"),
   playlistNameInput: document.getElementById("playlist-name"),
   playlistTypeSelect: document.getElementById("playlist-type"),
+  playlistDelayInput: document.getElementById("playlist-delay"),
   videoUrlInput: document.getElementById("video-url"),
 
   // Containers
@@ -31,6 +32,9 @@ const DOM = {
 
   // Modals
   playlistModal: document.getElementById("playlist-modal"),
+  editPlaylistModal: document.getElementById("edit-playlist-modal"),
+  editPlaylistNameInput: document.getElementById("edit-playlist-name"),
+  editPlaylistDelayInput: document.getElementById("edit-playlist-delay"),
   videoModal: document.getElementById("video-modal"),
 
   // Status elements
@@ -51,7 +55,6 @@ const DOM = {
 
   // Idle screen
   idleSaveBtn: document.getElementById("idle-save-btn"),
-  idleStopBtn: document.getElementById("idle-stop-btn"),
 
   // Scheduler
   newScheduleBtn: document.getElementById("new-schedule-btn"),

@@ -27,11 +27,17 @@ const API = {
 
   // Playlist endpoints
   getPlaylists: () => API.call("/playlists"),
-  createPlaylist: (name, type) =>
+  createPlaylist: (name, type, delay = 5) =>
     API.call("/playlists/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, type }),
+      body: JSON.stringify({ name, type, delay }),
+    }),
+  updatePlaylist: (playlistId, data) =>
+    API.call(`/playlists/${playlistId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
     }),
   deletePlaylist: (playlistId) =>
     API.call(`/playlists/${playlistId}`, { method: "DELETE" }),
@@ -47,6 +53,20 @@ const API = {
   deleteImage: (playlistId, filename) =>
     API.call(
       `/playlists/${playlistId}/images/${encodeURIComponent(filename)}`,
+      {
+        method: "DELETE",
+      },
+    ),
+  skipImage: (playlistId, filename) =>
+    API.call(
+      `/playlists/${playlistId}/images/${encodeURIComponent(filename)}/skip`,
+      {
+        method: "POST",
+      },
+    ),
+  unskipImage: (playlistId, filename) =>
+    API.call(
+      `/playlists/${playlistId}/images/${encodeURIComponent(filename)}/skip`,
       {
         method: "DELETE",
       },
@@ -82,7 +102,6 @@ const API = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     }),
-  stopIdle: () => API.call("/idle/stop", { method: "POST" }),
 
   // Scheduler endpoints
   getSchedules: () => API.call("/schedules"),

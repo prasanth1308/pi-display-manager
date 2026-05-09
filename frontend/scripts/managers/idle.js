@@ -78,15 +78,6 @@ const IdleManager = {
     }
   },
 
-  async stopAndRestore() {
-    try {
-      await API.stopIdle();
-      UI.showToast("Idle screen stopped, terminal restored", TOAST_TYPES.SUCCESS);
-    } catch (e) {
-      UI.showToast(`Failed to stop: ${e.message}`, TOAST_TYPES.ERROR);
-    }
-  },
-
   initUploadZone() {
     const zone = document.getElementById("idle-upload-zone");
     const input = document.getElementById("idle-file-input");

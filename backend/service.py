@@ -427,26 +427,13 @@ def start_idle_screen():
 def stop_idle_screen():
     """Stop the idle screen thread and kill any fbi process it owns."""
     global idle_thread, idle_stop_event
-
+    subprocess.run(["pkill", "-9", "fbi"], capture_output=True)
+    clear_framebuffer()
     idle_stop_event.set()
     if idle_thread and idle_thread.is_alive():
         idle_thread.join(timeout=3)
     idle_thread = None
     idle_stop_event = threading.Event()  # reset for next use
-
-
-def stop_idle_and_restore_terminal():
-    """Stop idle screen and hand the display back to the Linux console."""
-    stop_idle_screen()
-    if sys.platform == "linux":
-        # chvt 1 switches back to virtual terminal 1 (the text console),
-        # which lets the framebuffer show the TTY again.
-        try:
-            subprocess.run(["chvt", "1"], capture_output=True)
-            logger.info("Switched back to VT1 (terminal restored)")
-        except Exception as e:
-            logger.warning("chvt failed: %s", e)
-    return {"status": "stopped", "message": "Idle screen stopped, terminal restored"}
 
 
 # ── Playlists DB ──────────────────────────────────────────────────────────────
@@ -461,16 +448,39 @@ def save_playlists_db():
         logger.error("Failed to save playlists database: %s", e)
 
 
+def get_playlist_metadata(playlist_id):
+    """Get or create metadata for a playlist (tracks skipped images)"""
+    metadata_file = PLAYLISTS_DIR / f"{playlist_id}_metadata.json"
+    if metadata_file.exists():
+        try:
+            with open(metadata_file) as f:
+                return json.load(f)
+        except:
+            pass
+    return {"skipped_images": []}
+
+
+def save_playlist_metadata(playlist_id, metadata):
+    """Save playlist metadata"""
+    metadata_file = PLAYLISTS_DIR / f"{playlist_id}_metadata.json"
+    with open(metadata_file, 'w') as f:
+        json.dump(metadata, f, indent=2)
+
+
 def get_playlist_images(playlist_id):
-    """Get list of image files from a playlist folder"""
+    """Get list of image files from a playlist folder (excluding skipped images)"""
     playlist_dir = PLAYLISTS_DIR / playlist_id
     if not playlist_dir.exists():
         return []
     
+    # Get metadata to check skipped images
+    metadata = get_playlist_metadata(playlist_id)
+    skipped_images = set(metadata.get("skipped_images", []))
+    
     image_extensions = {".jpg", ".jpeg", ".png", ".bmp", ".gif"}
     images = sorted([
         str(f) for f in playlist_dir.iterdir()
-        if f.suffix.lower() in image_extensions and f.is_file()
+        if f.suffix.lower() in image_extensions and f.is_file() and f.name not in skipped_images
     ])
     return images
 
@@ -518,7 +528,8 @@ def start_slideshow(playlist_id=None):
         return {"status": "error", "message": "No images found in playlist"}
 
     try:
-        delay = config.get("delay", 5)
+        # Get delay from playlist, fallback to config default
+        delay = playlists_db["playlists"][playlist_id].get("delay", config.get("delay", 5))
         framebuffer = config.get("framebuffer", "/dev/fb0")
 
         cmd = [
@@ -612,21 +623,24 @@ def get_status():
     """Get current slideshow status"""
     active_playlist_id = playlists_db.get("active_playlist")
     image_count = 0
-    if active_playlist_id:
+    delay = config.get("delay", 5)  # Default delay
+    
+    if active_playlist_id and active_playlist_id in playlists_db["playlists"]:
         image_count = len(get_playlist_images(active_playlist_id))
+        delay = playlists_db["playlists"][active_playlist_id].get("delay", 5)
     
     return {
         "running": slideshow_process is not None or video_process is not None,
         "current_playlist": current_playlist,
         "active_playlist": active_playlist_id,
         "image_count": image_count,
-        "delay": config.get("delay"),
+        "delay": delay,
         "framebuffer": config.get("framebuffer"),
         "total_playlists": len(playlists_db.get("playlists", {}))
     }
 
 
-def create_playlist(name, playlist_type="image"):
+def create_playlist(name, playlist_type="image", delay=5):
     """Create a new playlist"""
     playlist_id = str(uuid.uuid4())[:8]
     
@@ -645,12 +659,32 @@ def create_playlist(name, playlist_type="image"):
         "type": playlist_type,
         "created": __import__('datetime').datetime.now().isoformat(),
         "image_count": 0,
-        "video_count": 0 if playlist_type == "video" else None
+        "video_count": 0 if playlist_type == "video" else None,
+        "delay": delay
     }
     save_playlists_db()
     
-    logger.info("Created %s playlist: %s (ID: %s)", playlist_type, name, playlist_id)
+    logger.info("Created %s playlist: %s (ID: %s) with delay: %ds", playlist_type, name, playlist_id, delay)
     return {"status": "success", "playlist_id": playlist_id, "message": "Playlist created"}
+
+
+def update_playlist(playlist_id, name=None, delay=None):
+    """Update playlist settings"""
+    if playlist_id not in playlists_db["playlists"]:
+        return {"status": "error", "message": "Playlist not found"}
+    
+    playlist = playlists_db["playlists"][playlist_id]
+    
+    if name is not None:
+        playlist["name"] = name
+    
+    if delay is not None:
+        playlist["delay"] = delay
+    
+    save_playlists_db()
+    
+    logger.info("Updated playlist %s: name=%s, delay=%s", playlist_id, name, delay)
+    return {"status": "success", "message": "Playlist updated", "playlist": playlist}
 
 
 def delete_playlist(playlist_id):
@@ -708,6 +742,7 @@ def list_playlists():
             "image_count": item_count if plist_type == "image" else 0,
             "video_count": item_count if plist_type == "video" else 0,
             "created": info.get("created", ""),
+            "delay": info.get("delay", 5),
             "is_active": playlists_db.get("active_playlist") == playlist_id,
             "is_playing": current_playlist == playlist_id
         })
@@ -749,6 +784,46 @@ def upload_image(playlist_id, file_data, filename):
     except Exception as e:
         logger.error("Failed to upload image: %s", e)
         return {"status": "error", "message": str(e)}
+
+
+def skip_image(playlist_id, filename):
+    """Mark an image as skipped in the playlist"""
+    if playlist_id not in playlists_db["playlists"]:
+        return {"status": "error", "message": "Playlist not found"}
+    
+    playlist_dir = PLAYLISTS_DIR / playlist_id
+    image_path = playlist_dir / filename
+    
+    if not image_path.exists():
+        return {"status": "error", "message": "Image not found"}
+    
+    metadata = get_playlist_metadata(playlist_id)
+    skipped_images = metadata.get("skipped_images", [])
+    
+    if filename not in skipped_images:
+        skipped_images.append(filename)
+        metadata["skipped_images"] = skipped_images
+        save_playlist_metadata(playlist_id, metadata)
+        logger.info("Image skipped: %s in playlist %s", filename, playlist_id)
+    
+    return {"status": "success", "message": "Image skipped"}
+
+
+def unskip_image(playlist_id, filename):
+    """Unmark an image as skipped in the playlist"""
+    if playlist_id not in playlists_db["playlists"]:
+        return {"status": "error", "message": "Playlist not found"}
+    
+    metadata = get_playlist_metadata(playlist_id)
+    skipped_images = metadata.get("skipped_images", [])
+    
+    if filename in skipped_images:
+        skipped_images.remove(filename)
+        metadata["skipped_images"] = skipped_images
+        save_playlist_metadata(playlist_id, metadata)
+        logger.info("Image unskipped: %s in playlist %s", filename, playlist_id)
+    
+    return {"status": "success", "message": "Image unskipped"}
 
 
 def delete_image(playlist_id, filename):
@@ -809,6 +884,10 @@ def get_playlist_images_list(playlist_id):
     playlist_dir = PLAYLISTS_DIR / playlist_id
     images = []
     
+    # Get metadata to check skipped images
+    metadata = get_playlist_metadata(playlist_id)
+    skipped_images = set(metadata.get("skipped_images", []))
+    
     image_extensions = {".jpg", ".jpeg", ".png", ".bmp", ".gif"}
     for file_path in sorted(playlist_dir.iterdir()):
         if file_path.suffix.lower() in image_extensions and file_path.is_file():
@@ -817,7 +896,8 @@ def get_playlist_images_list(playlist_id):
                 "filename": file_path.name,
                 "size": stat.st_size,
                 "modified": stat.st_mtime,
-                "type": "image"
+                "type": "image",
+                "skipped": file_path.name in skipped_images
             })
     
     return {"status": "success", "playlist_id": playlist_id, "images": images}

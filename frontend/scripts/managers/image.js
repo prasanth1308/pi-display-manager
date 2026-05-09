@@ -40,18 +40,26 @@ const ImageManager = {
    */
   createCard(image, playlistId) {
     const card = document.createElement("div");
-    card.className = "image-card";
+    card.className = "image-card" + (image.skipped ? " skipped" : "");
 
     const sizeKB = Math.round(image.size / 1024);
 
     card.innerHTML = `
-      <div class="image-preview">🖼️</div>
+      <div class="image-preview">
+        <img src="/data/playlists/${playlistId}/${encodeURIComponent(image.filename)}" alt="${UI.escapeHtml(image.filename)}" loading="lazy">
+        ${image.skipped ? '<div class="skip-overlay">Skipped</div>' : ""}
+      </div>
       <div class="image-name" title="${UI.escapeHtml(image.filename)}">${UI.escapeHtml(image.filename)}</div>
       <div class="image-info">${sizeKB} KB</div>
       <div class="image-actions">
+        <button class="btn btn-warning btn-sm skip-image">${image.skipped ? "Unskip" : "Skip"}</button>
         <button class="btn btn-danger btn-sm delete-image">Delete</button>
       </div>
     `;
+
+    card.querySelector(".skip-image").addEventListener("click", () => {
+      this.toggleSkip(playlistId, image.filename, image.skipped);
+    });
 
     card.querySelector(".delete-image").addEventListener("click", () => {
       this.delete(playlistId, image.filename);
@@ -132,6 +140,30 @@ const ImageManager = {
     } else {
       UI.showToast(
         data?.message || "Failed to delete image",
+        TOAST_TYPES.ERROR,
+      );
+    }
+  },
+
+  /**
+   * Toggle skip status of an image
+   */
+  async toggleSkip(playlistId, filename, isCurrentlySkipped) {
+    UI.showLoading();
+
+    const data = isCurrentlySkipped
+      ? await API.unskipImage(playlistId, filename)
+      : await API.skipImage(playlistId, filename);
+
+    UI.hideLoading();
+
+    if (data && data.status === "success") {
+      const action = isCurrentlySkipped ? "unskipped" : "skipped";
+      UI.showToast(`Image ${action} successfully`, TOAST_TYPES.SUCCESS);
+      this.load(playlistId);
+    } else {
+      UI.showToast(
+        data?.message || "Failed to update image",
         TOAST_TYPES.ERROR,
       );
     }

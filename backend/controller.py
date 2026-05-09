@@ -7,7 +7,7 @@ import json
 import uuid
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, unquote
 import signal
 import sys
 
@@ -24,19 +24,19 @@ from service import (
 
     # State variables
     logger, config, playlists_db, download_status,
-    slideshow_process, video_process, STATIC_DIR, IDLE_DIR,
+    slideshow_process, video_process, STATIC_DIR, IDLE_DIR, PLAYLISTS_DIR,
 
     # Service functions
     get_status, start_slideshow, stop_slideshow, clear_framebuffer,
-    list_playlists, create_playlist, delete_playlist,
+    list_playlists, create_playlist, update_playlist, delete_playlist,
     get_playlist_images_list, get_playlist_videos_list,
     upload_image, delete_image, delete_video,
+    skip_image, unskip_image,
     parse_multipart_form_data, download_youtube_video,
     start_video_playback, stop_video_playback, get_playlist_videos,
 
     # Idle screen
     get_idle_config, save_idle_config, start_idle_screen, stop_idle_screen,
-    stop_idle_and_restore_terminal,
 
     # Scheduler
     load_schedules_db, list_schedules, get_schedule, create_schedule,
@@ -213,7 +213,21 @@ class APIHandler(BaseHTTPRequestHandler):
         elif path.startswith("/data/idle/"):
             # Serve idle background image for browser preview
             filename = path[len("/data/idle/"):]
+            filename = unquote(filename)
             self.serve_file_from_dir(IDLE_DIR, filename)
+            return
+        elif path.startswith("/data/playlists/"):
+            # Serve playlist images for browser preview
+            # Format: /data/playlists/{playlist_id}/{filename}
+            parts = path[len("/data/playlists/"):].split("/", 1)
+            if len(parts) == 2:
+                playlist_id, filename = parts
+                filename = unquote(filename)
+                playlist_dir = PLAYLISTS_DIR / playlist_id
+                self.serve_file_from_dir(playlist_dir, filename)
+            else:
+                response = {"status": "error", "message": "Invalid path"}
+                self.send_json_response(response, 404)
             return
         else:
             response = {
@@ -301,7 +315,8 @@ class APIHandler(BaseHTTPRequestHandler):
                 data = json.loads(post_data.decode('utf-8'))
                 name = data.get("name", "Untitled Playlist")
                 playlist_type = data.get("type", "image")  # "image" or "video"
-                response = create_playlist(name, playlist_type)
+                delay = data.get("delay", 5)  # Default 5 seconds
+                response = create_playlist(name, playlist_type, delay)
             
             elif path.startswith("/api/playlists/") and "/upload" in path:
                 # Upload image to playlist
@@ -360,6 +375,14 @@ class APIHandler(BaseHTTPRequestHandler):
                             "message": "Download started"
                         }
             
+            elif path.startswith("/api/playlists/") and "/images/" in path and "/skip" in path:
+                # Skip an image in playlist
+                # Format: /api/playlists/{id}/images/{filename}/skip
+                parts = path.split("/")
+                playlist_id = parts[3]
+                filename = parts[5]
+                response = skip_image(playlist_id, filename)
+            
             elif path == "/api/schedules":
                 content_length = int(self.headers.get("Content-Length", 0))
                 data = json.loads(self.rfile.read(content_length))
@@ -379,9 +402,6 @@ class APIHandler(BaseHTTPRequestHandler):
                 if cfg.get("enabled") and cfg.get("image_path"):
                     start_idle_screen()
                 response = cfg
-
-            elif path == "/api/idle/stop":
-                response = stop_idle_and_restore_terminal()
 
             elif path == "/api/idle-config/upload":
                 content_type_hdr = self.headers.get("Content-Type", "")
@@ -443,7 +463,15 @@ class APIHandler(BaseHTTPRequestHandler):
             # Store current user for logging
             self.current_user = user_info
             
-            if path.startswith("/api/playlists/") and "/images/" in path:
+            if path.startswith("/api/playlists/") and "/images/" in path and "/skip" in path:
+                # Unskip an image in playlist
+                # Format: /api/playlists/{id}/images/{filename}/skip
+                parts = path.split("/")
+                playlist_id = parts[3]
+                filename = parts[5]
+                response = unskip_image(playlist_id, filename)
+            
+            elif path.startswith("/api/playlists/") and "/images/" in path:
                 # Delete image from playlist
                 parts = path.split("/")
                 playlist_id = parts[3]
@@ -489,7 +517,33 @@ class APIHandler(BaseHTTPRequestHandler):
         logger.info("PUT %s from %s", path, self.client_address[0])
 
         try:
-            if path.startswith("/api/schedules/"):
+            # Protected endpoints (require authentication)
+            cookie_header = self.headers.get('Cookie', '')
+            session_token = None
+            for cookie in cookie_header.split(';'):
+                cookie = cookie.strip()
+                if cookie.startswith('session_token='):
+                    session_token = cookie.split('=', 1)[1]
+                    break
+            
+            user_info = validate_session(session_token)
+            if not user_info:
+                response = {"status": "error", "message": "Unauthorized. Please login."}
+                self.send_json_response(response, 401)
+                return
+            
+            if path.startswith("/api/playlists/"):
+                # Update playlist settings
+                playlist_id = path.split("/")[3]
+                content_length = int(self.headers.get("Content-Length", 0))
+                data = json.loads(self.rfile.read(content_length))
+                result = update_playlist(
+                    playlist_id,
+                    name=data.get("name"),
+                    delay=data.get("delay")
+                )
+                self.send_json_response(result)
+            elif path.startswith("/api/schedules/"):
                 schedule_id = path.split("/")[3]
                 content_length = int(self.headers.get("Content-Length", 0))
                 data = json.loads(self.rfile.read(content_length))
