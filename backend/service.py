@@ -1066,6 +1066,14 @@ def parse_multipart_form_data_streaming(content_type, file_obj, content_length, 
                         if end_pos > 0:
                             out_file.write(buffer[:end_pos])
                             bytes_written += end_pos
+                        
+                        # Update final progress
+                        if upload_id and content_length > 0:
+                            upload_status[upload_id].update({
+                                "progress": 100,
+                                "bytes_written": bytes_written,
+                                "status": "complete"
+                            })
                         break
                     else:
                         # Keep last chunk in buffer in case boundary is split

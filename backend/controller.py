@@ -360,6 +360,22 @@ class APIHandler(BaseHTTPRequestHandler):
                             upload_id  # Pass upload ID for progress tracking
                         )
                         
+                        # Consume any remaining data from the request stream
+                        # This prevents the connection from hanging
+                        try:
+                            remaining = content_length - temp_path.stat().st_size if temp_path.exists() else 0
+                            if remaining > 0:
+                                # Read and discard remaining bytes
+                                bytes_to_read = min(remaining, 8192)
+                                while bytes_to_read > 0:
+                                    chunk = self.rfile.read(bytes_to_read)
+                                    if not chunk:
+                                        break
+                                    remaining -= len(chunk)
+                                    bytes_to_read = min(remaining, 8192)
+                        except Exception:
+                            pass  # Ignore errors when draining
+                        
                         if file_info and file_info.get('filename'):
                             filename = file_info['filename']
                             file_ext = filename.lower().split('.')[-1] if '.' in filename else ''
