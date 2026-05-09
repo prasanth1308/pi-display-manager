@@ -1266,18 +1266,16 @@ def downscale_video_to_1080p(video_path, downscale_id=None):
         ffmpeg_cmd = [
             'ffmpeg',
             '-i', str(video_path),
-
-            '-vf', 'scale=-2:720,format=yuv420p',
-
+            '-threads', '2',
+            '-vf', 'scale=-2:1080',
             '-c:v', 'h264_v4l2m2m',
-            '-b:v', '2500k',
-            '-bufsize', '3000k',
-
-            '-an',
-
+            '-b:v', '3M',
+            '-bufsize', '5000k',
+            '-r', '30',
+            '-an',  # Disable audio
+            '-max_muxing_queue_size', '512',
             '-progress', 'pipe:1',
             '-y',
-
             str(temp_output)
         ]
         
