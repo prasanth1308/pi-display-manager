@@ -1266,14 +1266,12 @@ def downscale_video_to_1080p(video_path, downscale_id=None):
         ffmpeg_cmd = [
             'ffmpeg',
             '-i', str(video_path),
-            '-threads', '2',
-            '-vf', 'scale=-2:1080',
+            '-vf', 'scale=-2:1080,fps=30,format=yuv420p',  # Scale, 30fps, and ensure yuv420p for compatibility
             '-c:v', 'h264_v4l2m2m',
-            '-b:v', '3M',
-            '-bufsize', '5000k',
-            '-r', '30',
+            '-b:v', '4M',  # Higher bitrate for better quality at 30fps
+            '-bufsize', '6000k',
+            '-vsync', 'cfr',  # Constant frame rate for smooth playback
             '-an',  # Disable audio
-            '-max_muxing_queue_size', '512',
             '-progress', 'pipe:1',
             '-y',
             str(temp_output)
