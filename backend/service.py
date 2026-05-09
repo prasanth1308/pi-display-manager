@@ -30,7 +30,6 @@ BASE_DIR = Path(__file__).parent.parent
 DATA_DIR = BASE_DIR / "data"
 PLAYLISTS_DIR = DATA_DIR / "playlists"
 VIDEOS_DIR = DATA_DIR / "videos"
-UPLOADS_DIR = DATA_DIR / "uploads"
 IDLE_DIR = DATA_DIR / "idle"
 PLAYLISTS_DB_FILE = BASE_DIR / "playlists.json"
 IDLE_CONFIG_FILE = BASE_DIR / "idle_config.json"
@@ -85,7 +84,6 @@ def ensure_directories():
     """Create necessary directories if they don't exist"""
     PLAYLISTS_DIR.mkdir(parents=True, exist_ok=True)
     VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
-    UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
     IDLE_DIR.mkdir(parents=True, exist_ok=True)
     STATIC_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -786,71 +784,6 @@ def upload_image(playlist_id, file_data, filename):
         logger.error("Failed to upload image: %s", e)
         return {"status": "error", "message": str(e)}
 
-
-def upload_video(playlist_id, temp_file_path, filename):
-    """Upload a video to a playlist (from temp file to avoid RAM exhaustion)"""
-    if playlist_id not in playlists_db["playlists"]:
-        # Clean up temp file
-        if Path(temp_file_path).exists():
-            Path(temp_file_path).unlink()
-        return {"status": "error", "message": "Playlist not found"}
-    
-    # Check if playlist is video type
-    if playlists_db["playlists"][playlist_id].get("type") != "video":
-        if Path(temp_file_path).exists():
-            Path(temp_file_path).unlink()
-        return {"status": "error", "message": "Not a video playlist"}
-    
-    # Check if playlist already has a video
-    existing_videos = get_playlist_videos(playlist_id)
-    if existing_videos:
-        if Path(temp_file_path).exists():
-            Path(temp_file_path).unlink()
-        return {"status": "error", "message": "Playlist already contains a video. Delete existing video first."}
-    
-    # Validate file extension
-    valid_extensions = {".mp4", ".avi", ".mkv", ".mov", ".wmv", ".flv", ".webm"}
-    file_ext = Path(filename).suffix.lower()
-    if file_ext not in valid_extensions:
-        if Path(temp_file_path).exists():
-            Path(temp_file_path).unlink()
-        return {"status": "error", "message": "Invalid video file type"}
-    
-    # Save file to video playlist folder (VIDEOS_DIR, not PLAYLISTS_DIR)
-    playlist_dir = VIDEOS_DIR / playlist_id
-    
-    # Ensure directory exists with proper permissions
-    playlist_dir.mkdir(parents=True, exist_ok=True, mode=0o755)
-    
-    file_path = playlist_dir / filename
-    
-    # Handle duplicate names
-    counter = 1
-    while file_path.exists():
-        name_stem = Path(filename).stem
-        file_path = playlist_dir / f"{name_stem}_{counter}{file_ext}"
-        counter += 1
-    
-    try:
-        # Move temp file to final location
-        shutil.move(str(temp_file_path), str(file_path))
-        
-        # Set file permissions to be readable by all users (0644)
-        file_path.chmod(0o644)
-        
-        # Update video count
-        videos = get_playlist_videos(playlist_id)
-        playlists_db["playlists"][playlist_id]["video_count"] = len(videos)
-        save_playlists_db()
-        
-        logger.info("Uploaded video to playlist %s: %s", playlist_id, file_path.name)
-        return {"status": "success", "message": "Video uploaded successfully", "filename": file_path.name}
-    except Exception as e:
-        logger.error("Failed to upload video: %s", e)
-        # Clean up temp file if still exists
-        if Path(temp_file_path).exists():
-            Path(temp_file_path).unlink()
-        return {"status": "error", "message": str(e)}
 
 
 def skip_image(playlist_id, filename):

@@ -6,7 +6,6 @@ Handles HTTP requests and routes them to appropriate service functions.
 import json
 import uuid
 import threading
-import tempfile
 from pathlib import Path
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs, unquote
@@ -27,17 +26,17 @@ from service import (
     # State variables
     logger, config, playlists_db, download_status, upload_status,
     slideshow_process, video_process, STATIC_DIR, IDLE_DIR, PLAYLISTS_DIR,
-    DATA_DIR, UPLOADS_DIR,
+    DATA_DIR, VIDEOS_DIR,
 
     # Service functions
     get_status, start_slideshow, stop_slideshow, clear_framebuffer,
     list_playlists, create_playlist, update_playlist, delete_playlist,
     get_playlist_images_list, get_playlist_videos_list,
-    upload_image, upload_video, delete_image, delete_video,
+    upload_image, delete_image, delete_video,
     skip_image, unskip_image,
     parse_multipart_form_data, parse_multipart_form_data_streaming,
     download_youtube_video,
-    start_video_playback, stop_video_playback, get_playlist_videos,
+    start_video_playback, stop_video_playback, get_playlist_videos, save_playlists_db,
 
     # Idle screen
     get_idle_config, save_idle_config, start_idle_screen, stop_idle_screen,
@@ -336,113 +335,149 @@ class APIHandler(BaseHTTPRequestHandler):
             elif path.startswith("/api/playlists/") and "/upload" in path:
                 # Upload file to playlist (image or video)
                 playlist_id = path.split("/")[3]
-                content_type = self.headers.get('Content-Type', '')
                 
-                logger.info("[UPLOAD-HANDLER] Received upload request for playlist: %s", playlist_id)
-                logger.info("[UPLOAD-HANDLER] Content-Type: %s", content_type[:100])
+                # Check if playlist exists
+                if playlist_id not in playlists_db["playlists"]:
+                    response = {"status": "error", "message": "Playlist not found"}
+                    self.send_json_response(response, 404)
+                    return
+                
+                # For video playlists, check if a video already exists BEFORE uploading
+                playlist_type = playlists_db["playlists"][playlist_id].get("type", "image")
+                if playlist_type == "video":
+                    existing_videos = get_playlist_videos(playlist_id)
+                    if existing_videos:
+                        response = {
+                            "status": "error",
+                            "message": "Playlist already contains a video. Delete the existing video first."
+                        }
+                        logger.warning("[UPLOAD-HANDLER] Rejected upload - video already exists in playlist %s", playlist_id)
+                        self.send_json_response(response, 400)
+                        # Must consume the request body to avoid connection issues
+                        content_length = int(self.headers.get('Content-Length', 0))
+                        self.rfile.read(content_length)
+                        return
+                
+                content_type = self.headers.get('Content-Type', '')
                 
                 if 'multipart/form-data' in content_type:
                     content_length = int(self.headers.get('Content-Length', 0))
-                    logger.info("[UPLOAD-HANDLER] Content-Length: %d bytes (%.2f MB)", 
-                               content_length, content_length / (1024 * 1024))
                     
-                    # Check if content length suggests a video (>10MB = likely video)
-                    # Use streaming for large files to avoid RAM exhaustion
+                    # For large files (>10MB), stream directly to final destination to avoid RAM exhaustion
                     if content_length > 10 * 1024 * 1024:  # 10MB threshold
-                        logger.info("[UPLOAD-HANDLER] Using STREAMING parser (file > 10MB)")
                         # Generate upload ID for progress tracking
                         upload_id = str(uuid.uuid4())[:8]
                         
-                        # Stream directly to temp file
-                        temp_file = tempfile.NamedTemporaryFile(delete=False, dir=str(UPLOADS_DIR))
-                        temp_path = Path(temp_file.name)
-                        temp_file.close()
+                        # Prepare video playlist directory
+                        playlist_dir = VIDEOS_DIR / playlist_id
+                        playlist_dir.mkdir(parents=True, exist_ok=True, mode=0o755)
                         
-                        file_info = parse_multipart_form_data_streaming(
-                            content_type,
-                            self.rfile,
-                            content_length,
-                            temp_path,
-                            upload_id  # Pass upload ID for progress tracking
-                        )
+                        # Create temp filename for streaming (will rename after we know actual filename)
+                        temp_dest = playlist_dir / f".uploading_{upload_id}.tmp"
                         
-                        # The streaming parser consumes the entire request stream
-                        # including boundaries and headers, so no draining needed
-                        
-                        if file_info and file_info.get('filename'):
-                            filename = file_info['filename']
-                            file_ext = filename.lower().split('.')[-1] if '.' in filename else ''
+                        try:
+                            # Stream directly to playlist folder
+                            file_info = parse_multipart_form_data_streaming(
+                                content_type,
+                                self.rfile,
+                                content_length,
+                                temp_dest,
+                                upload_id
+                            )
                             
-                            # Should be a video based on size
-                            video_extensions = ['mp4', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'webm']
-                            if file_ext in video_extensions:
-                                response = upload_video(
-                                    playlist_id,
-                                    str(temp_path),
-                                    filename
-                                )
-                                # Add upload_id to response for frontend tracking
-                                if response.get('status') == 'success':
-                                    response['upload_id'] = upload_id
+                            if file_info and file_info.get('filename'):
+                                filename = file_info['filename']
+                                file_ext = Path(filename).suffix.lower()
+                                
+                                # Validate video extension
+                                valid_extensions = {'.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm'}
+                                if file_ext not in valid_extensions:
+                                    temp_dest.unlink()
+                                    response = {"status": "error", "message": "Invalid video file type"}
+                                else:
+                                    # Handle duplicate filenames
+                                    final_path = playlist_dir / filename
+                                    counter = 1
+                                    while final_path.exists():
+                                        name_stem = Path(filename).stem
+                                        final_path = playlist_dir / f"{name_stem}_{counter}{file_ext}"
+                                        counter += 1
+                                    
+                                    # Rename temp file to final name
+                                    temp_dest.rename(final_path)
+                                    
+                                    # Set proper permissions
+                                    final_path.chmod(0o644)
+                                    
+                                    # Update playlist database
+                                    videos = get_playlist_videos(playlist_id)
+                                    playlists_db["playlists"][playlist_id]["video_count"] = len(videos)
+                                    save_playlists_db()
+                                    
+                                    logger.info("[UPLOAD-HANDLER] Video uploaded successfully: %s", final_path.name)
+                                    response = {
+                                        "status": "success",
+                                        "message": "Video uploaded successfully",
+                                        "filename": final_path.name,
+                                        "upload_id": upload_id
+                                    }
                             else:
-                                # Large non-video file - treat as image but warn
-                                # Read temp file (still in memory but unavoidable for images)
-                                try:
-                                    with open(temp_path, 'rb') as f:
-                                        file_data = f.read()
-                                    temp_path.unlink()
-                                    response = upload_image(
-                                        playlist_id,
-                                        file_data,
-                                        filename
-                                    )
-                                except Exception as e:
-                                    if temp_path.exists():
-                                        temp_path.unlink()
-                                    response = {"status": "error", "message": f"Failed to process file: {str(e)}"}
-                        else:
-                            response = {"status": "error", "message": "No valid file uploaded"}
+                                if temp_dest.exists():
+                                    temp_dest.unlink()
+                                response = {"status": "error", "message": "No valid file uploaded"}
+                        except Exception as e:
+                            logger.error("[UPLOAD-HANDLER] Upload failed: %s", str(e))
+                            if temp_dest.exists():
+                                temp_dest.unlink()
+                            response = {"status": "error", "message": str(e)}
                     else:
-                        # Small file - use in-memory parsing (original method)
-                        logger.info("[UPLOAD-HANDLER] Using IN-MEMORY parser (file < 10MB)")
-                        
-                        # Determine expected field name based on playlist type
-                        expected_field = "image"  # default
+                        # Small file (<10MB) - use in-memory parsing
+                        expected_field = "image"
                         if playlist_id in playlists_db["playlists"]:
                             playlist_type = playlists_db["playlists"][playlist_id].get("type", "image")
                             expected_field = "video" if playlist_type == "video" else "image"
-                            logger.info("[UPLOAD-HANDLER] Playlist type: %s, expected field: %s", 
-                                       playlist_type, expected_field)
                         
                         body = self.rfile.read(content_length)
-                        logger.info("[UPLOAD-HANDLER] Read %d bytes from request body", len(body))
                         file_info = parse_multipart_form_data(content_type, body, expected_field)
-                        logger.info("[UPLOAD-HANDLER] Parser returned: %s", 
-                                   file_info if file_info else "None")
                         
                         if file_info and file_info.get('filename') and file_info.get('data'):
                             filename = file_info['filename']
-                            file_ext = filename.lower().split('.')[-1] if '.' in filename else ''
+                            file_ext = Path(filename).suffix.lower()
                             
-                            video_extensions = ['mp4', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'webm']
+                            # For small videos, write directly to final location
+                            video_extensions = {'.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm'}
                             if file_ext in video_extensions:
-                                # Small video - write to temp file then move
-                                temp_file = tempfile.NamedTemporaryFile(delete=False, dir=str(UPLOADS_DIR))
-                                temp_file.write(file_info['data'])
-                                temp_path = Path(temp_file.name)
-                                temp_file.close()
-                                
-                                response = upload_video(
-                                    playlist_id,
-                                    str(temp_path),
-                                    filename
-                                )
+                                try:
+                                    playlist_dir = VIDEOS_DIR / playlist_id
+                                    playlist_dir.mkdir(parents=True, exist_ok=True, mode=0o755)
+                                    
+                                    # Handle duplicate filenames
+                                    final_path = playlist_dir / filename
+                                    counter = 1
+                                    while final_path.exists():
+                                        name_stem = Path(filename).stem
+                                        final_path = playlist_dir / f"{name_stem}_{counter}{file_ext}"
+                                        counter += 1
+                                    
+                                    # Write directly
+                                    final_path.write_bytes(file_info['data'])
+                                    final_path.chmod(0o644)
+                                    
+                                    # Update database
+                                    videos = get_playlist_videos(playlist_id)
+                                    playlists_db["playlists"][playlist_id]["video_count"] = len(videos)
+                                    save_playlists_db()
+                                    
+                                    response = {
+                                        "status": "success",
+                                        "message": "Video uploaded successfully",
+                                        "filename": final_path.name
+                                    }
+                                except Exception as e:
+                                    logger.error("[UPLOAD-HANDLER] Small video upload failed: %s", str(e))
+                                    response = {"status": "error", "message": str(e)}
                             else:
-                                response = upload_image(
-                                    playlist_id,
-                                    file_info['data'],
-                                    filename
-                                )
+                                response = upload_image(playlist_id, file_info['data'], filename)
                         else:
                             logger.error("[UPLOAD-HANDLER] No valid file uploaded - file_info: %s", file_info)
                             response = {"status": "error", "message": "No valid file uploaded"}
