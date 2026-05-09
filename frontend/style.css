@@ -51,13 +51,22 @@ header {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 12px;
     margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+
+.header-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
 
 .header-actions {
     display: flex;
     align-items: center;
     gap: 8px;
+    margin-left: auto;
 }
 
 .user-info {
@@ -109,26 +118,17 @@ header h1 {
     background: var(--success-color);
 }
 
-/* Control Panel */
+/* Control Panel - Hidden (controls moved to header) */
 .control-panel {
-    background: var(--card-bg);
-    border-radius: 8px;
-    padding: 12px 16px;
-    margin-bottom: 16px;
-    box-shadow: var(--shadow);
+    display: none;
 }
 
 .controls {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    flex-wrap: wrap;
+    display: none;
 }
 
 .help-text {
-    color: var(--text-secondary);
-    font-size: 0.8rem;
-    margin-left: auto;
+    display: none;
 }
 
 /* Buttons */
@@ -161,6 +161,11 @@ header h1 {
 .btn-sm {
     padding: 6px 12px;
     font-size: 0.85rem;
+}
+
+.btn-sm svg {
+    width: 16px;
+    height: 16px;
 }
 
 .btn-large {
@@ -665,10 +670,28 @@ footer {
 
     .header-top {
         margin-bottom: 6px;
+        gap: 8px;
     }
 
     header h1 {
-        font-size: 1.1rem;
+        font-size: 1rem;
+        flex: 0 1 auto;
+    }
+
+    .header-controls {
+        gap: 4px;
+        order: 3;
+        flex-basis: 100%;
+    }
+
+    .header-controls .btn {
+        flex: 1;
+        font-size: 0.8rem;
+        padding: 6px 10px;
+    }
+
+    .header-actions {
+        margin-left: 0;
     }
 
     .user-info {
@@ -682,15 +705,6 @@ footer {
 
     .status-item {
         gap: 4px;
-    }
-
-    .control-panel {
-        padding: 10px 12px;
-        margin-bottom: 12px;
-    }
-
-    .controls {
-        gap: 6px;
     }
 
     .help-text {

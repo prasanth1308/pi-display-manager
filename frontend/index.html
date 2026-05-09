@@ -11,10 +11,22 @@
       <header>
         <div class="header-top">
           <h1>🖼️ Pi Display Manager</h1>
+          <div class="header-controls">
+            <button id="play-btn" class="btn btn-primary btn-sm" disabled>
+              ▶️ Play
+            </button>
+            <button id="stop-btn" class="btn btn-danger btn-sm" disabled>
+              ⏹️ Stop
+            </button>
+          </div>
           <div class="header-actions">
             <span id="user-info" class="user-info"></span>
-            <button id="logout-btn" class="btn btn-secondary btn-sm">
-              🚪
+            <button id="logout-btn" class="btn btn-secondary btn-sm" title="Logout">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                <polyline points="16 17 21 12 16 7"></polyline>
+                <line x1="21" y1="12" x2="9" y2="12"></line>
+              </svg>
             </button>
           </div>
         </div>
@@ -35,19 +47,6 @@
       </header>
 
       <main>
-        <!-- Control Panel -->
-        <section class="control-panel">
-          <div class="controls">
-            <button id="play-btn" class="btn btn-primary" disabled>
-              ▶️ Play
-            </button>
-            <button id="stop-btn" class="btn btn-danger" disabled>
-              ⏹️ Stop
-            </button>
-            <span class="help-text">Select a playlist to enable playback</span>
-          </div>
-        </section>
-
         <!-- Playlists Section -->
         <section class="playlists-section">
           <div class="section-header">
