@@ -257,7 +257,7 @@ class APIHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         """Handle POST requests"""
-        from service import logger
+        from service import logger, playlists_db
         
         parsed_path = urlparse(self.path)
         path = parsed_path.path
@@ -405,9 +405,18 @@ class APIHandler(BaseHTTPRequestHandler):
                     else:
                         # Small file - use in-memory parsing (original method)
                         logger.info("[UPLOAD-HANDLER] Using IN-MEMORY parser (file < 10MB)")
+                        
+                        # Determine expected field name based on playlist type
+                        expected_field = "image"  # default
+                        if playlist_id in playlists_db["playlists"]:
+                            playlist_type = playlists_db["playlists"][playlist_id].get("type", "image")
+                            expected_field = "video" if playlist_type == "video" else "image"
+                            logger.info("[UPLOAD-HANDLER] Playlist type: %s, expected field: %s", 
+                                       playlist_type, expected_field)
+                        
                         body = self.rfile.read(content_length)
                         logger.info("[UPLOAD-HANDLER] Read %d bytes from request body", len(body))
-                        file_info = parse_multipart_form_data(content_type, body)
+                        file_info = parse_multipart_form_data(content_type, body, expected_field)
                         logger.info("[UPLOAD-HANDLER] Parser returned: %s", 
                                    file_info if file_info else "None")
                         
