@@ -45,7 +45,9 @@ const ImageManager = {
     const sizeKB = Math.round(image.size / 1024);
 
     card.innerHTML = `
-      <div class="image-preview">🖼️</div>
+      <div class="image-preview">
+        <img src="/data/playlists/${playlistId}/${encodeURIComponent(image.filename)}" alt="${UI.escapeHtml(image.filename)}" loading="lazy">
+      </div>
       <div class="image-name" title="${UI.escapeHtml(image.filename)}">${UI.escapeHtml(image.filename)}</div>
       <div class="image-info">${sizeKB} KB</div>
       <div class="image-actions">

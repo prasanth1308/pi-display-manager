@@ -24,7 +24,7 @@ from service import (
 
     # State variables
     logger, config, playlists_db, download_status,
-    slideshow_process, video_process, STATIC_DIR, IDLE_DIR,
+    slideshow_process, video_process, STATIC_DIR, IDLE_DIR, PLAYLISTS_DIR,
 
     # Service functions
     get_status, start_slideshow, stop_slideshow, clear_framebuffer,
@@ -213,6 +213,18 @@ class APIHandler(BaseHTTPRequestHandler):
             # Serve idle background image for browser preview
             filename = path[len("/data/idle/"):]
             self.serve_file_from_dir(IDLE_DIR, filename)
+            return
+        elif path.startswith("/data/playlists/"):
+            # Serve playlist images for browser preview
+            # Format: /data/playlists/{playlist_id}/{filename}
+            parts = path[len("/data/playlists/"):].split("/", 1)
+            if len(parts) == 2:
+                playlist_id, filename = parts
+                playlist_dir = PLAYLISTS_DIR / playlist_id
+                self.serve_file_from_dir(playlist_dir, filename)
+            else:
+                response = {"status": "error", "message": "Invalid path"}
+                self.send_json_response(response, 404)
             return
         else:
             response = {
