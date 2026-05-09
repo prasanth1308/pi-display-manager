@@ -7,7 +7,7 @@ import json
 import uuid
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, unquote
 import signal
 import sys
 
@@ -212,6 +212,7 @@ class APIHandler(BaseHTTPRequestHandler):
         elif path.startswith("/data/idle/"):
             # Serve idle background image for browser preview
             filename = path[len("/data/idle/"):]
+            filename = unquote(filename)
             self.serve_file_from_dir(IDLE_DIR, filename)
             return
         elif path.startswith("/data/playlists/"):
@@ -220,6 +221,7 @@ class APIHandler(BaseHTTPRequestHandler):
             parts = path[len("/data/playlists/"):].split("/", 1)
             if len(parts) == 2:
                 playlist_id, filename = parts
+                filename = unquote(filename)
                 playlist_dir = PLAYLISTS_DIR / playlist_id
                 self.serve_file_from_dir(playlist_dir, filename)
             else:
