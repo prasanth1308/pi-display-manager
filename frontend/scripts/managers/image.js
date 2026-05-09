@@ -112,36 +112,56 @@ const ImageManager = {
       formData.append(isVideo ? "video" : "image", file);
 
       if (isLargeVideo) {
-        // Show progress for large video uploads
+        // Show progress for large video uploads using XHR progress events
         UI.showProgress(`Uploading ${file.name}...`, 0);
-      } else {
-        UI.showLoading();
-      }
-
-      const data = await API.uploadImage(AppState.selectedPlaylistId, formData);
-
-      if (data && data.status === "success") {
-        // If video upload with progress tracking
-        if (isLargeVideo && data.upload_id) {
-          // Poll for upload completion
-          await this.pollUploadStatus(data.upload_id);
-        }
-
-        if (!isLargeVideo) {
-          UI.hideLoading();
-        }
-
-        successCount++;
-      } else {
-        if (isLargeVideo) {
+        
+        try {
+          const data = await API.uploadImageWithProgress(
+            AppState.selectedPlaylistId,
+            formData,
+            (percentComplete, loaded, total) => {
+              const sizeMB = (loaded / (1024 * 1024)).toFixed(1);
+              const totalMB = (total / (1024 * 1024)).toFixed(1);
+              UI.showProgress(
+                `Uploading ${file.name}...`,
+                Math.floor(percentComplete),
+                `${sizeMB} MB / ${totalMB} MB`
+              );
+            }
+          );
+          
+          if (data && data.status === "success") {
+            UI.showProgress("Upload complete!", 100, "Processing...");
+            setTimeout(() => {
+              UI.hideProgress();
+            }, 1000);
+            successCount++;
+          } else {
+            UI.hideProgress();
+            failCount++;
+            if (data && data.message) {
+              UI.showToast(data.message, TOAST_TYPES.ERROR);
+            }
+          }
+        } catch (error) {
           UI.hideProgress();
-        } else {
-          UI.hideLoading();
+          failCount++;
+          UI.showToast(`Upload failed: ${error.message}`, TOAST_TYPES.ERROR);
         }
+      } else {
+        // Small files - use regular upload
+        UI.showLoading();
+        const data = await API.uploadImage(AppState.selectedPlaylistId, formData);
 
-        failCount++;
-        if (data && data.message) {
-          UI.showToast(data.message, TOAST_TYPES.ERROR);
+        UI.hideLoading();
+        
+        if (data && data.status === "success") {
+          successCount++;
+        } else {
+          failCount++;
+          if (data && data.message) {
+            UI.showToast(data.message, TOAST_TYPES.ERROR);
+          }
         }
       }
     }
@@ -174,51 +194,6 @@ const ImageManager = {
 
     // Reset file input
     DOM.fileInput.value = "";
-  },
-
-  /**
-   * Poll upload status for progress tracking
-   */
-  async pollUploadStatus(uploadId) {
-    return new Promise((resolve) => {
-      const pollInterval = setInterval(async () => {
-        const status = await API.getUploadStatus(uploadId);
-
-        if (!status) {
-          clearInterval(pollInterval);
-          UI.hideProgress();
-          resolve();
-          return;
-        }
-
-        if (status.status === "uploading") {
-          const progress = status.progress || 0;
-          const bytesWritten = status.bytes_written || 0;
-          const totalBytes = status.total_bytes || 0;
-
-          const sizeMB = (bytesWritten / (1024 * 1024)).toFixed(1);
-          const totalMB = (totalBytes / (1024 * 1024)).toFixed(1);
-
-          UI.showProgress(
-            `Uploading video...`,
-            progress,
-            `${sizeMB} MB / ${totalMB} MB (${progress}%)`,
-          );
-        } else if (status.status === "complete") {
-          UI.showProgress("Upload complete!", 100, "Processing...");
-          clearInterval(pollInterval);
-          setTimeout(() => {
-            UI.hideProgress();
-            resolve();
-          }, 1000);
-        } else if (status.status === "error") {
-          clearInterval(pollInterval);
-          UI.hideProgress();
-          UI.showToast(status.message || "Upload failed", TOAST_TYPES.ERROR);
-          resolve();
-        }
-      }, 500); // Poll every 500ms
-    });
   },
 
   /**
