@@ -1024,14 +1024,18 @@ def parse_multipart_form_data_streaming(content_type, file_obj, content_length, 
         in_file_content = False
         out_file = None
         bytes_written = 0
+        bytes_read = 0  # Track total bytes consumed from stream
         last_progress_update = 0
         
         try:
-            while True:
-                chunk = file_obj.read(chunk_size)
+            while bytes_read < content_length:
+                # Read remaining bytes, capped at chunk size
+                to_read = min(chunk_size, content_length - bytes_read)
+                chunk = file_obj.read(to_read)
                 if not chunk:
                     break
                 
+                bytes_read += len(chunk)
                 buffer += chunk
                 
                 # Look for headers if not yet in file content
@@ -1074,7 +1078,10 @@ def parse_multipart_form_data_streaming(content_type, file_obj, content_length, 
                                 "bytes_written": bytes_written,
                                 "status": "complete"
                             })
-                        break
+                        
+                        # Clear buffer and continue reading to consume entire request
+                        buffer = b''
+                        continue
                     else:
                         # Keep last chunk in buffer in case boundary is split
                         if len(buffer) > boundary_len + 10:
