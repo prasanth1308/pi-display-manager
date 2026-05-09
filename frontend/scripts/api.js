@@ -53,36 +53,36 @@ const API = {
   uploadImageWithProgress: (playlistId, formData, onProgress) => {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      
-      xhr.upload.addEventListener('progress', (e) => {
+
+      xhr.upload.addEventListener("progress", (e) => {
         if (e.lengthComputable && onProgress) {
           const percentComplete = (e.loaded / e.total) * 100;
           onProgress(percentComplete, e.loaded, e.total);
         }
       });
-      
-      xhr.addEventListener('load', () => {
+
+      xhr.addEventListener("load", () => {
         if (xhr.status >= 200 && xhr.status < 300) {
           try {
             const data = JSON.parse(xhr.responseText);
             resolve(data);
           } catch (error) {
-            reject(new Error('Invalid JSON response'));
+            reject(new Error("Invalid JSON response"));
           }
         } else {
           reject(new Error(`HTTP ${xhr.status}`));
         }
       });
-      
-      xhr.addEventListener('error', () => {
-        reject(new Error('Upload failed'));
+
+      xhr.addEventListener("error", () => {
+        reject(new Error("Upload failed"));
       });
-      
-      xhr.addEventListener('abort', () => {
-        reject(new Error('Upload cancelled'));
+
+      xhr.addEventListener("abort", () => {
+        reject(new Error("Upload cancelled"));
       });
-      
-      xhr.open('POST', `/api/playlists/${playlistId}/upload`);
+
+      xhr.open("POST", `/api/playlists/${playlistId}/upload`);
       xhr.send(formData);
     });
   },

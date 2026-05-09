@@ -114,7 +114,7 @@ const ImageManager = {
       if (isLargeVideo) {
         // Show progress for large video uploads using XHR progress events
         UI.showProgress(`Uploading ${file.name}...`, 0);
-        
+
         try {
           const data = await API.uploadImageWithProgress(
             AppState.selectedPlaylistId,
@@ -125,11 +125,11 @@ const ImageManager = {
               UI.showProgress(
                 `Uploading ${file.name}...`,
                 Math.floor(percentComplete),
-                `${sizeMB} MB / ${totalMB} MB`
+                `${sizeMB} MB / ${totalMB} MB`,
               );
-            }
+            },
           );
-          
+
           if (data && data.status === "success") {
             UI.showProgress("Upload complete!", 100, "Processing...");
             setTimeout(() => {
@@ -151,10 +151,13 @@ const ImageManager = {
       } else {
         // Small files - use regular upload
         UI.showLoading();
-        const data = await API.uploadImage(AppState.selectedPlaylistId, formData);
+        const data = await API.uploadImage(
+          AppState.selectedPlaylistId,
+          formData,
+        );
 
         UI.hideLoading();
-        
+
         if (data && data.status === "success") {
           successCount++;
         } else {
