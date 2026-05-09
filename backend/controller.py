@@ -412,16 +412,19 @@ class APIHandler(BaseHTTPRequestHandler):
                                     # Set proper permissions
                                     final_path.chmod(0o644)
                                     
-                                    # Downscale to 1080p if needed (use upload_id as downscale_id)
-                                    logger.info("[UPLOAD-HANDLER] Checking if downscaling needed...")
-                                    downscale_success = downscale_video_to_1080p(final_path, upload_id)
-                                    if not downscale_success:
-                                        logger.warning("[UPLOAD-HANDLER] Downscaling failed, keeping original video")
-                                    
-                                    # Update playlist database
+                                    # Update playlist database immediately
                                     videos = get_playlist_videos(playlist_id)
                                     playlists_db["playlists"][playlist_id]["video_count"] = len(videos)
                                     save_playlists_db()
+                                    
+                                    # Start downscaling in background thread
+                                    logger.info("[UPLOAD-HANDLER] Starting background downscaling for: %s", final_path.name)
+                                    thread = threading.Thread(
+                                        target=downscale_video_to_1080p,
+                                        args=(final_path, upload_id),
+                                        daemon=True
+                                    )
+                                    thread.start()
                                     
                                     logger.info("[UPLOAD-HANDLER] Video uploaded successfully: %s", final_path.name)
                                     response = {
@@ -473,17 +476,22 @@ class APIHandler(BaseHTTPRequestHandler):
                                     final_path.write_bytes(file_info['data'])
                                     final_path.chmod(0o644)
                                     
-                                    # Downscale to 1080p if needed
+                                    # Generate downscale ID
                                     downscale_id = str(uuid.uuid4())[:8]
-                                    logger.info("[UPLOAD-HANDLER] Checking if downscaling needed...")
-                                    downscale_success = downscale_video_to_1080p(final_path, downscale_id)
-                                    if not downscale_success:
-                                        logger.warning("[UPLOAD-HANDLER] Downscaling failed, keeping original video")
                                     
-                                    # Update database
+                                    # Update database immediately
                                     videos = get_playlist_videos(playlist_id)
                                     playlists_db["playlists"][playlist_id]["video_count"] = len(videos)
                                     save_playlists_db()
+                                    
+                                    # Start downscaling in background thread
+                                    logger.info("[UPLOAD-HANDLER] Starting background downscaling for: %s", final_path.name)
+                                    thread = threading.Thread(
+                                        target=downscale_video_to_1080p,
+                                        args=(final_path, downscale_id),
+                                        daemon=True
+                                    )
+                                    thread.start()
                                     
                                     response = {
                                         "status": "success",

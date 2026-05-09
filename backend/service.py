@@ -1512,12 +1512,6 @@ def download_youtube_video(playlist_id, video_url, download_id):
             new_path = playlist_dir / new_filename
             video_file.rename(new_path)
             
-            # Downscale to 1080p if needed (use download_id as downscale_id)
-            logger.info("[DOWNLOAD] Checking if downscaling needed...")
-            downscale_success = downscale_video_to_1080p(new_path, download_id)
-            if not downscale_success:
-                logger.warning("[DOWNLOAD] Downscaling failed, keeping original video")
-            
             duration = get_video_duration(new_path)
             
             download_status[download_id] = {
