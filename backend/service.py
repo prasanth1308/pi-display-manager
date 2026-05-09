@@ -786,24 +786,33 @@ def upload_image(playlist_id, file_data, filename):
         return {"status": "error", "message": str(e)}
 
 
-def upload_video(playlist_id, file_data, filename):
-    """Upload a video to a playlist"""
+def upload_video(playlist_id, temp_file_path, filename):
+    """Upload a video to a playlist (from temp file to avoid RAM exhaustion)"""
     if playlist_id not in playlists_db["playlists"]:
+        # Clean up temp file
+        if Path(temp_file_path).exists():
+            Path(temp_file_path).unlink()
         return {"status": "error", "message": "Playlist not found"}
     
     # Check if playlist is video type
     if playlists_db["playlists"][playlist_id].get("type") != "video":
+        if Path(temp_file_path).exists():
+            Path(temp_file_path).unlink()
         return {"status": "error", "message": "Not a video playlist"}
     
     # Check if playlist already has a video
     existing_videos = get_playlist_videos(playlist_id)
     if existing_videos:
+        if Path(temp_file_path).exists():
+            Path(temp_file_path).unlink()
         return {"status": "error", "message": "Playlist already contains a video. Delete existing video first."}
     
     # Validate file extension
     valid_extensions = {".mp4", ".avi", ".mkv", ".mov", ".wmv", ".flv", ".webm"}
     file_ext = Path(filename).suffix.lower()
     if file_ext not in valid_extensions:
+        if Path(temp_file_path).exists():
+            Path(temp_file_path).unlink()
         return {"status": "error", "message": "Invalid video file type"}
     
     # Save file to playlist folder
@@ -818,8 +827,8 @@ def upload_video(playlist_id, file_data, filename):
         counter += 1
     
     try:
-        with open(file_path, 'wb') as f:
-            f.write(file_data)
+        # Move temp file to final location
+        shutil.move(str(temp_file_path), str(file_path))
         
         # Update video count
         videos = get_playlist_videos(playlist_id)
@@ -830,6 +839,9 @@ def upload_video(playlist_id, file_data, filename):
         return {"status": "success", "message": "Video uploaded successfully", "filename": file_path.name}
     except Exception as e:
         logger.error("Failed to upload video: %s", e)
+        # Clean up temp file if still exists
+        if Path(temp_file_path).exists():
+            Path(temp_file_path).unlink()
         return {"status": "error", "message": str(e)}
 
 
@@ -974,8 +986,102 @@ def get_playlist_videos_list(playlist_id):
     return {"status": "success", "playlist_id": playlist_id, "videos": videos}
 
 
+def parse_multipart_form_data_streaming(content_type, file_obj, content_length, output_path):
+    """Parse multipart/form-data by streaming to disk to avoid RAM exhaustion"""
+    try:
+        # Extract boundary from content type
+        boundary = None
+        for part in content_type.split(';'):
+            part = part.strip()
+            if part.startswith('boundary='):
+                boundary = part.split('=', 1)[1].strip('"')
+                break
+        
+        if not boundary:
+            return None
+        
+        boundary_bytes = ('--' + boundary).encode()
+        boundary_len = len(boundary_bytes)
+        
+        # Buffer for reading chunks
+        chunk_size = 8192  # 8KB chunks
+        buffer = b''
+        filename = None
+        in_file_content = False
+        out_file = None
+        bytes_written = 0
+        
+        try:
+            while True:
+                chunk = file_obj.read(chunk_size)
+                if not chunk:
+                    break
+                
+                buffer += chunk
+                
+                # Look for headers if not yet in file content
+                if not in_file_content:
+                    header_end = buffer.find(b'\r\n\r\n')
+                    if header_end != -1:
+                        headers_data = buffer[:header_end]
+                        headers_str = headers_data.decode('utf-8', errors='ignore')
+                        
+                        # Extract filename
+                        for line in headers_str.split('\r\n'):
+                            if 'Content-Disposition:' in line:
+                                for param in line.split(';'):
+                                    param = param.strip()
+                                    if 'filename=' in param:
+                                        filename = param.split('=', 1)[1].strip('"')
+                                        break
+                        
+                        if filename:
+                            # Start writing file content
+                            buffer = buffer[header_end + 4:]
+                            out_file = open(output_path, 'wb')
+                            in_file_content = True
+                
+                # Write file content, checking for boundary
+                if in_file_content and out_file:
+                    # Check if we have a boundary in buffer
+                    boundary_pos = buffer.find(boundary_bytes)
+                    if boundary_pos != -1:
+                        # Write everything before boundary (minus \r\n)
+                        end_pos = boundary_pos - 2 if boundary_pos >= 2 else boundary_pos
+                        if end_pos > 0:
+                            out_file.write(buffer[:end_pos])
+                            bytes_written += end_pos
+                        break
+                    else:
+                        # Keep last chunk in buffer in case boundary is split
+                        if len(buffer) > boundary_len + 10:
+                            write_size = len(buffer) - (boundary_len + 10)
+                            out_file.write(buffer[:write_size])
+                            bytes_written += write_size
+                            buffer = buffer[write_size:]
+        
+        finally:
+            if out_file:
+                out_file.close()
+        
+        if filename and bytes_written > 0:
+            return {'filename': filename, 'path': str(output_path), 'size': bytes_written}
+        
+        # Clean up if failed
+        if output_path.exists():
+            output_path.unlink()
+        
+        return None
+    
+    except Exception as e:
+        logger.error("Error parsing multipart form data (streaming): %s", e)
+        if output_path and output_path.exists():
+            output_path.unlink()
+        return None
+
+
 def parse_multipart_form_data(content_type, body, expected_field="image"):
-    """Parse multipart/form-data without using deprecated cgi module"""
+    """Parse multipart/form-data without using deprecated cgi module (for small files)"""
     try:
         # Extract boundary from content type
         boundary = None

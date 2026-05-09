@@ -6,6 +6,8 @@ Handles HTTP requests and routes them to appropriate service functions.
 import json
 import uuid
 import threading
+import tempfile
+from pathlib import Path
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs, unquote
 import signal
@@ -25,6 +27,7 @@ from service import (
     # State variables
     logger, config, playlists_db, download_status,
     slideshow_process, video_process, STATIC_DIR, IDLE_DIR, PLAYLISTS_DIR,
+    DATA_DIR, UPLOADS_DIR,
 
     # Service functions
     get_status, start_slideshow, stop_slideshow, clear_framebuffer,
@@ -32,7 +35,8 @@ from service import (
     get_playlist_images_list, get_playlist_videos_list,
     upload_image, upload_video, delete_image, delete_video,
     skip_image, unskip_image,
-    parse_multipart_form_data, download_youtube_video,
+    parse_multipart_form_data, parse_multipart_form_data_streaming,
+    download_youtube_video,
     start_video_playback, stop_video_playback, get_playlist_videos,
 
     # Idle screen
@@ -324,33 +328,83 @@ class APIHandler(BaseHTTPRequestHandler):
                 content_type = self.headers.get('Content-Type', '')
                 
                 if 'multipart/form-data' in content_type:
-                    # Read the entire body
                     content_length = int(self.headers.get('Content-Length', 0))
-                    body = self.rfile.read(content_length)
                     
-                    # Parse multipart data
-                    file_info = parse_multipart_form_data(content_type, body)
-                    
-                    if file_info and file_info.get('filename') and file_info.get('data'):
-                        filename = file_info['filename']
-                        file_ext = filename.lower().split('.')[-1] if '.' in filename else ''
+                    # Check if content length suggests a video (>10MB = likely video)
+                    # Use streaming for large files to avoid RAM exhaustion
+                    if content_length > 10 * 1024 * 1024:  # 10MB threshold
+                        # Stream directly to temp file
+                        temp_file = tempfile.NamedTemporaryFile(delete=False, dir=str(UPLOADS_DIR))
+                        temp_path = Path(temp_file.name)
+                        temp_file.close()
                         
-                        # Check if it's a video file
-                        video_extensions = ['mp4', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'webm']
-                        if file_ext in video_extensions:
-                            response = upload_video(
-                                playlist_id,
-                                file_info['data'],
-                                file_info['filename']
-                            )
+                        file_info = parse_multipart_form_data_streaming(
+                            content_type,
+                            self.rfile,
+                            content_length,
+                            temp_path
+                        )
+                        
+                        if file_info and file_info.get('filename'):
+                            filename = file_info['filename']
+                            file_ext = filename.lower().split('.')[-1] if '.' in filename else ''
+                            
+                            # Should be a video based on size
+                            video_extensions = ['mp4', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'webm']
+                            if file_ext in video_extensions:
+                                response = upload_video(
+                                    playlist_id,
+                                    str(temp_path),
+                                    filename
+                                )
+                            else:
+                                # Large non-video file - treat as image but warn
+                                # Read temp file (still in memory but unavoidable for images)
+                                try:
+                                    with open(temp_path, 'rb') as f:
+                                        file_data = f.read()
+                                    temp_path.unlink()
+                                    response = upload_image(
+                                        playlist_id,
+                                        file_data,
+                                        filename
+                                    )
+                                except Exception as e:
+                                    if temp_path.exists():
+                                        temp_path.unlink()
+                                    response = {"status": "error", "message": f"Failed to process file: {str(e)}"}
                         else:
-                            response = upload_image(
-                                playlist_id,
-                                file_info['data'],
-                                file_info['filename']
-                            )
+                            response = {"status": "error", "message": "No valid file uploaded"}
                     else:
-                        response = {"status": "error", "message": "No valid file uploaded"}
+                        # Small file - use in-memory parsing (original method)
+                        body = self.rfile.read(content_length)
+                        file_info = parse_multipart_form_data(content_type, body)
+                        
+                        if file_info and file_info.get('filename') and file_info.get('data'):
+                            filename = file_info['filename']
+                            file_ext = filename.lower().split('.')[-1] if '.' in filename else ''
+                            
+                            video_extensions = ['mp4', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'webm']
+                            if file_ext in video_extensions:
+                                # Small video - write to temp file then move
+                                temp_file = tempfile.NamedTemporaryFile(delete=False, dir=str(UPLOADS_DIR))
+                                temp_file.write(file_info['data'])
+                                temp_path = Path(temp_file.name)
+                                temp_file.close()
+                                
+                                response = upload_video(
+                                    playlist_id,
+                                    str(temp_path),
+                                    filename
+                                )
+                            else:
+                                response = upload_image(
+                                    playlist_id,
+                                    file_info['data'],
+                                    filename
+                                )
+                        else:
+                            response = {"status": "error", "message": "No valid file uploaded"}
                 else:
                     response = {"status": "error", "message": "Content must be multipart/form-data"}
             
