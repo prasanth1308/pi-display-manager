@@ -25,7 +25,7 @@ from service import (
     setup_logging, ensure_directories, load_config, load_playlists_db,
 
     # State variables
-    logger, config, playlists_db, download_status, upload_status, downscale_status,
+    logger, config, playlists_db, download_status, downscale_status,
     slideshow_process, video_process, STATIC_DIR, IDLE_DIR, PLAYLISTS_DIR,
     DATA_DIR, VIDEOS_DIR,
 
@@ -170,13 +170,6 @@ class APIHandler(BaseHTTPRequestHandler):
                 response = download_status[download_id]
             else:
                 response = {"status": "not_found", "message": "Download not found"}
-        elif path.startswith("/api/upload/"):
-            # Get upload status
-            upload_id = path.split("/")[3]
-            if upload_id in upload_status:
-                response = upload_status[upload_id]
-            else:
-                response = {"status": "not_found", "message": "Upload not found"}
         elif path.startswith("/api/downscale/"):
             # Get downscale status
             downscale_id = path.split("/")[3]

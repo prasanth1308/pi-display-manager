@@ -23,7 +23,6 @@ config = {}
 playlists_db = {}
 current_playlist = None
 download_status = {}  # Track video download status
-upload_status = {}  # Track video upload status
 downscale_status = {}  # Track video downscaling progress
 api_port = 8000
 logger = None
@@ -930,20 +929,11 @@ def get_playlist_videos_list(playlist_id):
 
 def parse_multipart_form_data_streaming(content_type, file_obj, content_length, output_path, upload_id=None):
     """Parse multipart/form-data by streaming to disk to avoid RAM exhaustion"""
-    global upload_status
     
     logger.info("[UPLOAD] Starting streaming upload - content_length: %d bytes (%.2f MB), upload_id: %s", 
                 content_length, content_length / (1024 * 1024), upload_id)
     
     try:
-        # Initialize upload status
-        if upload_id:
-            upload_status[upload_id] = {
-                "status": "uploading",
-                "progress": 0,
-                "bytes_written": 0,
-                "total_bytes": content_length
-            }
         
         # Extract boundary from content type
         boundary = None
@@ -955,8 +945,6 @@ def parse_multipart_form_data_streaming(content_type, file_obj, content_length, 
         
         if not boundary:
             logger.error("[UPLOAD] No boundary found in Content-Type: %s", content_type)
-            if upload_id:
-                upload_status[upload_id] = {"status": "error", "message": "Invalid boundary"}
             return None
         
         logger.info("[UPLOAD] Boundary extracted: %s", boundary[:50])
@@ -972,7 +960,6 @@ def parse_multipart_form_data_streaming(content_type, file_obj, content_length, 
         out_file = None
         bytes_written = 0
         bytes_read = 0  # Track total bytes consumed from stream
-        last_progress_update = 0
         
         logger.info("[UPLOAD] Starting read loop - chunk_size: %d bytes", chunk_size)
         
@@ -1036,14 +1023,6 @@ def parse_multipart_form_data_streaming(content_type, file_obj, content_length, 
                         logger.info("[UPLOAD] Boundary detected at position %d - file complete: %d bytes written (%.2f MB)", 
                                    boundary_pos, bytes_written, bytes_written / (1024 * 1024))
                         
-                        # Update final progress
-                        if upload_id and content_length > 0:
-                            upload_status[upload_id].update({
-                                "progress": 100,
-                                "bytes_written": bytes_written,
-                                "status": "complete"
-                            })
-                        
                         # Clear buffer and continue reading to consume entire request
                         logger.info("[UPLOAD] Continuing to consume remaining stream data...")
                         buffer = b''
@@ -1055,21 +1034,6 @@ def parse_multipart_form_data_streaming(content_type, file_obj, content_length, 
                             out_file.write(buffer[:write_size])
                             bytes_written += write_size
                             buffer = buffer[write_size:]
-                            
-                            # Update progress every 1%
-                            if upload_id and content_length > 0:
-                                progress = min(99, int((bytes_written / content_length) * 100))
-                                if progress > last_progress_update:
-                                    upload_status[upload_id].update({
-                                        "progress": progress,
-                                        "bytes_written": bytes_written,
-                                        "status": "uploading"
-                                    })
-                                    logger.info("[UPLOAD] Progress: %d%% (%d MB / %d MB)", 
-                                               progress, 
-                                               bytes_written // (1024 * 1024), 
-                                               content_length // (1024 * 1024))
-                                    last_progress_update = progress
             
             # Log when loop exits
             logger.info("[UPLOAD] Read loop complete - bytes_read: %d / %d, in_file_content: %s, filename: %s", 
@@ -1082,16 +1046,8 @@ def parse_multipart_form_data_streaming(content_type, file_obj, content_length, 
                 out_file.close()
         
         if filename and bytes_written > 0:
-            # Mark as complete
             logger.info("[UPLOAD] Upload SUCCESS - filename: %s, size: %d bytes (%.2f MB)", 
                        filename, bytes_written, bytes_written / (1024 * 1024))
-            if upload_id:
-                upload_status[upload_id] = {
-                    "status": "complete",
-                    "progress": 100,
-                    "bytes_written": bytes_written,
-                    "filename": filename
-                }
             return {'filename': filename, 'path': str(output_path), 'size': bytes_written}
         
         # Clean up if failed
@@ -1099,17 +1055,12 @@ def parse_multipart_form_data_streaming(content_type, file_obj, content_length, 
         if output_path.exists():
             output_path.unlink()
         
-        if upload_id:
-            upload_status[upload_id] = {"status": "error", "message": "Upload failed"}
-        
         return None
     
     except Exception as e:
         logger.error("[UPLOAD] EXCEPTION in streaming parser: %s", e, exc_info=True)
         if output_path and output_path.exists():
             output_path.unlink()
-        if upload_id:
-            upload_status[upload_id] = {"status": "error", "message": str(e)}
         return None
 
 

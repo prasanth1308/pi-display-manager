@@ -118,7 +118,6 @@ const API = {
       body: JSON.stringify({ url }),
     }),
   getDownloadStatus: (downloadId) => API.call(`/download/${downloadId}`),
-  getUploadStatus: (uploadId) => API.call(`/upload/${uploadId}`),
   getDownscaleStatus: (downscaleId) => API.call(`/downscale/${downscaleId}`),
   deleteVideo: (playlistId, filename) =>
     API.call(
