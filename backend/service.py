@@ -24,6 +24,7 @@ playlists_db = {}
 current_playlist = None
 download_status = {}  # Track video download status
 upload_status = {}  # Track video upload status
+downscale_status = {}  # Track video downscaling progress
 api_port = 8000
 logger = None
 BASE_DIR = Path(__file__).parent.parent
@@ -1228,9 +1229,20 @@ def is_youtube_url(url):
         return False
 
 
-def downscale_video_to_1080p(video_path):
+def downscale_video_to_1080p(video_path, downscale_id=None):
     """Downscale video to 1080p using ffmpeg if resolution is higher"""
+    global downscale_status
+    temp_output = None
+    
     try:
+        # Initialize status if downscale_id provided
+        if downscale_id:
+            downscale_status[downscale_id] = {
+                "status": "checking",
+                "progress": 0,
+                "message": "Checking video resolution..."
+            }
+        
         # Check current resolution using ffprobe
         probe_cmd = [
             'ffprobe', '-v', 'error',
@@ -1243,12 +1255,24 @@ def downscale_video_to_1080p(video_path):
         result = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=10)
         if result.returncode != 0:
             logger.warning("[DOWNSCALE] Could not probe video resolution: %s", result.stderr)
+            if downscale_id:
+                downscale_status[downscale_id] = {
+                    "status": "error",
+                    "progress": 0,
+                    "message": "Could not probe video resolution"
+                }
             return True  # Skip downscaling but don't fail
         
         # Parse width,height
         resolution = result.stdout.strip().split(',')
         if len(resolution) != 2:
             logger.warning("[DOWNSCALE] Invalid resolution format: %s", result.stdout)
+            if downscale_id:
+                downscale_status[downscale_id] = {
+                    "status": "error",
+                    "progress": 0,
+                    "message": "Invalid resolution format"
+                }
             return True
         
         width, height = int(resolution[0]), int(resolution[1])
@@ -1257,64 +1281,188 @@ def downscale_video_to_1080p(video_path):
         # Only downscale if height > 1080 or width > 1920
         if height <= 1080 and width <= 1920:
             logger.info("[DOWNSCALE] Video already at or below 1080p, skipping")
+            if downscale_id:
+                downscale_status[downscale_id] = {
+                    "status": "skipped",
+                    "progress": 100,
+                    "message": f"Video already at {width}x{height}, no downscaling needed"
+                }
             return True
         
         logger.info("[DOWNSCALE] Downscaling video from %dx%d to 1080p...", width, height)
+        if downscale_id:
+            downscale_status[downscale_id] = {
+                "status": "downscaling",
+                "progress": 5,
+                "message": f"Downscaling from {width}x{height} to 1080p..."
+            }
+        
+        # Get video duration for progress calculation
+        duration_cmd = [
+            'ffprobe', '-v', 'error',
+            '-show_entries', 'format=duration',
+            '-of', 'default=noprint_wrappers=1:nokey=1',
+            str(video_path)
+        ]
+        duration_result = subprocess.run(duration_cmd, capture_output=True, text=True, timeout=10)
+        duration = float(duration_result.stdout.strip()) if duration_result.returncode == 0 else 0
+        logger.info("[DOWNSCALE] Video duration: %.2f seconds", duration)
         
         # Create temp output file
         temp_output = video_path.parent / f".downscaling_{video_path.name}"
         
         # Try hardware-accelerated encoding first (h264_omx for Raspberry Pi)
-        # Falls back to software encoding if hardware not available
         ffmpeg_cmd = [
             'ffmpeg', '-i', str(video_path),
             '-vf', 'scale=-2:1080',  # Maintain aspect ratio, height=1080
             '-c:v', 'h264_omx',  # Hardware codec for Raspberry Pi
             '-b:v', '2M',  # 2Mbps bitrate
             '-c:a', 'copy',  # Copy audio without re-encoding
+            '-progress', 'pipe:1',  # Output progress to stdout
             '-y',  # Overwrite output
             str(temp_output)
         ]
         
-        logger.info("[DOWNSCALE] Running with hardware acceleration: %s", ' '.join(ffmpeg_cmd))
-        result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, timeout=600)
+        logger.info("[DOWNSCALE-HARDWARE] Running: %s", ' '.join(ffmpeg_cmd))
+        success = _run_ffmpeg_with_progress(ffmpeg_cmd, duration, downscale_id, "hardware", timeout=600)
         
         # If hardware encoding failed, try software with ultrafast preset
-        if result.returncode != 0:
+        if not success:
             logger.warning("[DOWNSCALE] Hardware encoding failed, trying software encoding...")
+            if downscale_id:
+                downscale_status[downscale_id] = {
+                    "status": "downscaling",
+                    "progress": 5,
+                    "message": "Hardware encoding failed, using software encoding..."
+                }
+            
             ffmpeg_cmd = [
                 'ffmpeg', '-i', str(video_path),
                 '-vf', 'scale=-2:1080',
                 '-c:v', 'libx264',
                 '-preset', 'ultrafast',  # Fastest preset
                 '-crf', '30',  # Lower quality for speed
+                '-vsync', 'cfr',  # Constant frame rate to preserve speed
                 '-c:a', 'copy',
+                '-progress', 'pipe:1',
                 '-y',
                 str(temp_output)
             ]
-            logger.info("[DOWNSCALE] Running with software encoding: %s", ' '.join(ffmpeg_cmd))
-            result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, timeout=900)
+            logger.info("[DOWNSCALE-SOFTWARE] Running: %s", ' '.join(ffmpeg_cmd))
+            success = _run_ffmpeg_with_progress(ffmpeg_cmd, duration, downscale_id, "software", timeout=900)
         
-        if result.returncode != 0:
-            logger.error("[DOWNSCALE] ffmpeg failed: %s", result.stderr)
-            if temp_output.exists():
+        if not success:
+            logger.error("[DOWNSCALE] ffmpeg failed")
+            if temp_output and temp_output.exists():
                 temp_output.unlink()
+            if downscale_id:
+                downscale_status[downscale_id] = {
+                    "status": "error",
+                    "progress": 0,
+                    "message": "Downscaling failed"
+                }
             return False
         
         # Replace original with downscaled version
         temp_output.replace(video_path)
         logger.info("[DOWNSCALE] Successfully downscaled video to 1080p")
+        if downscale_id:
+            downscale_status[downscale_id] = {
+                "status": "completed",
+                "progress": 100,
+                "message": "Video downscaled successfully"
+            }
         return True
         
     except subprocess.TimeoutExpired:
-        logger.error("[DOWNSCALE] Downscaling timed out (video too long or CPU too slow)")
-        if 'temp_output' in locals() and temp_output.exists():
+        logger.error("[DOWNSCALE] Downscaling timed out")
+        if temp_output and temp_output.exists():
             temp_output.unlink()
+        if downscale_id:
+            downscale_status[downscale_id] = {
+                "status": "error",
+                "progress": 0,
+                "message": "Downscaling timed out"
+            }
         return False
     except Exception as e:
         logger.error("[DOWNSCALE] Downscaling failed: %s", str(e))
-        if 'temp_output' in locals() and temp_output.exists():
+        if temp_output and temp_output.exists():
             temp_output.unlink()
+        if downscale_id:
+            downscale_status[downscale_id] = {
+                "status": "error",
+                "progress": 0,
+                "message": f"Error: {str(e)}"
+            }
+        return False
+
+
+def _run_ffmpeg_with_progress(cmd, duration, downscale_id, mode, timeout):
+    """Run ffmpeg command and parse progress output"""
+    global downscale_status
+    
+    try:
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+            bufsize=1
+        )
+        
+        last_progress = 0
+        start_time = time.time()
+        
+        # Read progress output line by line
+        for line in process.stdout:
+            line = line.strip()
+            
+            # Check timeout
+            if time.time() - start_time > timeout:
+                process.kill()
+                logger.error("[DOWNSCALE-%s] Timeout after %d seconds", mode.upper(), timeout)
+                return False
+            
+            # Parse out_time_ms from ffmpeg progress
+            if line.startswith('out_time_ms='):
+                try:
+                    time_ms = int(line.split('=')[1])
+                    time_sec = time_ms / 1000000.0  # Convert microseconds to seconds
+                    
+                    if duration > 0:
+                        progress = min(int((time_sec / duration) * 100), 99)
+                        
+                        # Only update every 10% to reduce noise
+                        if progress >= last_progress + 10:
+                            last_progress = progress
+                            logger.info("[DOWNSCALE-%s] Progress: %d%% (%.1f/%.1f seconds)", 
+                                      mode.upper(), progress, time_sec, duration)
+                            
+                            if downscale_id:
+                                downscale_status[downscale_id]["progress"] = progress
+                except (ValueError, IndexError):
+                    pass
+        
+        # Wait for process to complete
+        process.wait(timeout=10)
+        
+        if process.returncode != 0:
+            stderr = process.stderr.read()
+            logger.error("[DOWNSCALE-%s] Failed with code %d: %s", 
+                        mode.upper(), process.returncode, stderr[-500:] if stderr else "")
+            return False
+        
+        logger.info("[DOWNSCALE-%s] Completed successfully", mode.upper())
+        return True
+        
+    except Exception as e:
+        logger.error("[DOWNSCALE-%s] Error: %s", mode.upper(), str(e))
+        if 'process' in locals():
+            try:
+                process.kill()
+            except:
+                pass
         return False
 
 
@@ -1398,9 +1546,9 @@ def download_youtube_video(playlist_id, video_url, download_id):
             new_path = playlist_dir / new_filename
             video_file.rename(new_path)
             
-            # Downscale to 1080p if needed
+            # Downscale to 1080p if needed (use download_id as downscale_id)
             logger.info("[DOWNLOAD] Checking if downscaling needed...")
-            downscale_success = downscale_video_to_1080p(new_path)
+            downscale_success = downscale_video_to_1080p(new_path, download_id)
             if not downscale_success:
                 logger.warning("[DOWNLOAD] Downscaling failed, keeping original video")
             
@@ -1410,6 +1558,7 @@ def download_youtube_video(playlist_id, video_url, download_id):
                 "status": "completed",
                 "progress": 100,
                 "filename": new_filename,
+                "downscale_id": download_id,
                 "duration": duration,
                 "title": video_title,
                 "message": "Download completed"

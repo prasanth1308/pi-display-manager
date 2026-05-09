@@ -25,7 +25,7 @@ from service import (
     setup_logging, ensure_directories, load_config, load_playlists_db,
 
     # State variables
-    logger, config, playlists_db, download_status, upload_status,
+    logger, config, playlists_db, download_status, upload_status, downscale_status,
     slideshow_process, video_process, STATIC_DIR, IDLE_DIR, PLAYLISTS_DIR,
     DATA_DIR, VIDEOS_DIR,
 
@@ -177,6 +177,13 @@ class APIHandler(BaseHTTPRequestHandler):
                 response = upload_status[upload_id]
             else:
                 response = {"status": "not_found", "message": "Upload not found"}
+        elif path.startswith("/api/downscale/"):
+            # Get downscale status
+            downscale_id = path.split("/")[3]
+            if downscale_id in downscale_status:
+                response = downscale_status[downscale_id]
+            else:
+                response = {"status": "not_found", "message": "Downscale not found"}
         elif path == "/api/start":
             playlist_id = query.get("playlist", [None])[0]
             if playlist_id and playlist_id in playlists_db["playlists"]:
@@ -412,9 +419,9 @@ class APIHandler(BaseHTTPRequestHandler):
                                     # Set proper permissions
                                     final_path.chmod(0o644)
                                     
-                                    # Downscale to 1080p if needed
+                                    # Downscale to 1080p if needed (use upload_id as downscale_id)
                                     logger.info("[UPLOAD-HANDLER] Checking if downscaling needed...")
-                                    downscale_success = downscale_video_to_1080p(final_path)
+                                    downscale_success = downscale_video_to_1080p(final_path, upload_id)
                                     if not downscale_success:
                                         logger.warning("[UPLOAD-HANDLER] Downscaling failed, keeping original video")
                                     
@@ -428,7 +435,8 @@ class APIHandler(BaseHTTPRequestHandler):
                                         "status": "success",
                                         "message": "Video uploaded successfully",
                                         "filename": final_path.name,
-                                        "upload_id": upload_id
+                                        "upload_id": upload_id,
+                                        "downscale_id": upload_id
                                     }
                             else:
                                 if temp_dest.exists():
@@ -473,8 +481,9 @@ class APIHandler(BaseHTTPRequestHandler):
                                     final_path.chmod(0o644)
                                     
                                     # Downscale to 1080p if needed
+                                    downscale_id = str(uuid.uuid4())[:8]
                                     logger.info("[UPLOAD-HANDLER] Checking if downscaling needed...")
-                                    downscale_success = downscale_video_to_1080p(final_path)
+                                    downscale_success = downscale_video_to_1080p(final_path, downscale_id)
                                     if not downscale_success:
                                         logger.warning("[UPLOAD-HANDLER] Downscaling failed, keeping original video")
                                     
@@ -486,7 +495,8 @@ class APIHandler(BaseHTTPRequestHandler):
                                     response = {
                                         "status": "success",
                                         "message": "Video uploaded successfully",
-                                        "filename": final_path.name
+                                        "filename": final_path.name,
+                                        "downscale_id": downscale_id
                                     }
                                 except Exception as e:
                                     logger.error("[UPLOAD-HANDLER] Small video upload failed: %s", str(e))
