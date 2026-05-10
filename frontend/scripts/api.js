@@ -93,18 +93,11 @@ const API = {
         method: "DELETE",
       },
     ),
-  skipImage: (playlistId, filename) =>
+  skipImage: (playlistId, filename, skipStatus) =>
     API.call(
       `/playlists/${playlistId}/images/${encodeURIComponent(filename)}/skip`,
       {
-        method: "POST",
-      },
-    ),
-  unskipImage: (playlistId, filename) =>
-    API.call(
-      `/playlists/${playlistId}/images/${encodeURIComponent(filename)}/skip`,
-      {
-        method: "DELETE",
+        method: skipStatus ? "POST" : "DELETE",
       },
     ),
 
