@@ -538,16 +538,14 @@ def start_slideshow(playlist_id=None):
         cmd = [
             "fbi",
             "-t", str(delay),
+            "-a",           # Autoscale images to fit screen
             "--noverbose",
             "-d", framebuffer,
             "-T", "1",
         ] + images
 
-        # Log FBI command for debugging
-        logger.info("FBI Command: %s", ' '.join(cmd[:10]))  # Log first 10 elements
-        logger.info("Total images in command: %d", len(images))
-        if images:
-            logger.info("First 3 images: %s", images[:3])
+        # Log complete FBI command for debugging
+        logger.info("Executing FBI command: %s", ' '.join(cmd))
         
         logger.info("Starting slideshow with playlist: %s (%d images)", playlist_id, len(images))
 
@@ -576,15 +574,28 @@ def start_slideshow(playlist_id=None):
         time.sleep(0.5)
         if slideshow_process.poll() is not None:
             # Process already exited - check log for errors
-            logger.error("FBI process exited immediately with code: %d", slideshow_process.returncode)
+            exit_code = slideshow_process.returncode
+            logger.error("FBI process exited immediately with code: %d", exit_code)
+            
+            error_msg = f"FBI failed to start (exit code: {exit_code})"
             try:
                 with open(fbi_log, "r") as f:
-                    log_tail = f.read()[-500:]  # Last 500 chars
+                    log_content = f.read()
+                    log_tail = log_content[-500:]  # Last 500 chars
                     logger.error("FBI log tail: %s", log_tail)
-            except:
-                pass
+                    
+                    # Include helpful error hints
+                    if "Permission denied" in log_content:
+                        error_msg += " - Permission denied. Try running with sudo or check framebuffer permissions."
+                    elif "cannot open" in log_content or "No such file" in log_content:
+                        error_msg += " - Cannot open framebuffer or image files."
+                    elif exit_code == 1:
+                        error_msg += " - Check fbi_error.log for details."
+            except Exception as e:
+                logger.warning("Could not read FBI log: %s", e)
+            
             slideshow_process = None
-            return {"status": "error", "message": "FBI failed to start - check fbi_error.log"}
+            return {"status": "error", "message": error_msg}
         
         current_playlist = playlist_id
         playlists_db["active_playlist"] = playlist_id
