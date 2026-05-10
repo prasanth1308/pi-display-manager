@@ -23,6 +23,7 @@ const DOM = {
   playlistNameInput: document.getElementById("playlist-name"),
   playlistTypeSelect: document.getElementById("playlist-type"),
   playlistDelayInput: document.getElementById("playlist-delay"),
+  playlistDelayLabel: document.getElementById("playlist-delay-label"),
   videoUrlInput: document.getElementById("video-url"),
 
   // Containers

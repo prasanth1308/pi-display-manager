@@ -196,6 +196,17 @@ const VideoManager = {
       return;
     }
 
+    // Handle 404 (downscale not found) silently - no toast
+    if (
+      data.status === "error" &&
+      data.message &&
+      data.message.includes("not found")
+    ) {
+      AppState.stopPolling();
+      UI.hideProgress();
+      return;
+    }
+
     if (data.status === "checking") {
       UI.showProgress(data.message || "Checking video...", data.progress || 0);
     } else if (data.status === "downscaling") {

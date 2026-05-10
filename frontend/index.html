@@ -80,7 +80,7 @@
               <button
                 id="download-video-trigger-btn"
                 class="btn btn-primary"
-                style="display: none"
+                style="display: none; margin-left: 8px;"
               >
                 📥 Download Video
               </button>
@@ -88,10 +88,11 @@
                 Close
               </button>
             </div>
-            <p class="help-text" id="video-upload-note" style="display: none; margin-top: 8px; color: var(--warning-color);">
-              ⚠️ Upload only 1080p videos. Higher resolutions will be downscaled to 1080p during playback.
-            </p>
           </div>
+          
+          <p class="help-text" id="video-upload-note" style="display: none; margin-top: 8px; color: var(--warning-color);">
+            ⚠️ Upload only 1080p videos. Higher resolutions will be downscaled to 1080p during playback.
+          </p>
 
           <!-- Download Progress Section -->
           <div
@@ -226,10 +227,10 @@
             <label for="playlist-type">Playlist Type:</label>
             <select id="playlist-type" class="input-field">
               <option value="image">Image Playlist</option>
-              <option value="video">Video Playlist (YouTube)</option>
+              <option value="video">Video Playlist</option>
             </select>
 
-            <label for="playlist-delay">Slide Delay (seconds):</label>
+            <label for="playlist-delay" id="playlist-delay-label">Slide Delay (seconds):</label>
             <input
               type="number"
               id="playlist-delay"
@@ -375,7 +376,7 @@
               class="input-field"
             />
             <p class="help-text">
-              Only YouTube URLs are supported. Video will be downloaded in 720p
+              Only YouTube URLs are supported. Video will be downloaded in 1080p
               quality.
             </p>
             <div
