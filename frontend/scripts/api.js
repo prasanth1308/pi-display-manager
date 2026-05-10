@@ -108,6 +108,13 @@ const API = {
       },
     ),
 
+  // PDF endpoints
+  uploadPDF: (playlistId, formData) =>
+    API.call(`/playlists/${playlistId}/upload-pdf`, {
+      method: "POST",
+      body: formData,
+    }),
+
   // Video endpoints
   getPlaylistVideos: (playlistId) =>
     API.call(`/playlists/${playlistId}/videos`),

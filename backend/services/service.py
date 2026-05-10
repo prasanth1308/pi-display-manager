@@ -15,6 +15,8 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 import yt_dlp
+from pdf2image import convert_from_bytes
+from PIL import Image
 
 # Global state
 slideshow_process = None
@@ -782,6 +784,61 @@ def upload_image(playlist_id, file_data, filename):
     except Exception as e:
         logger.error("Failed to upload image: %s", e)
         return {"status": "error", "message": str(e)}
+
+
+def convert_pdf_to_images(playlist_id, file_data, filename):
+    """Convert PDF pages to images and save to playlist"""
+    if playlist_id not in playlists_db["playlists"]:
+        return {"status": "error", "message": "Playlist not found"}
+    
+    logger.info("[PDF] Converting PDF to images: %s for playlist %s", filename, playlist_id)
+    
+    try:
+        # Convert PDF bytes to images
+        # DPI 200 provides good quality without being too large
+        images = convert_from_bytes(file_data, dpi=200, fmt='jpeg')
+        
+        playlist_dir = PLAYLISTS_DIR / playlist_id
+        pdf_name = Path(filename).stem  # Get filename without extension
+        
+        saved_images = []
+        
+        # Save each page as a separate image
+        for page_num, image in enumerate(images, start=1):
+            # Generate filename: originalname_page_001.jpg
+            image_filename = f"{pdf_name}_page_{page_num:03d}.jpg"
+            image_path = playlist_dir / image_filename
+            
+            # Handle duplicate names
+            counter = 1
+            while image_path.exists():
+                image_filename = f"{pdf_name}_page_{page_num:03d}_{counter}.jpg"
+                image_path = playlist_dir / image_filename
+                counter += 1
+            
+            # Save the image
+            image.save(image_path, 'JPEG', quality=85, optimize=True)
+            image_path.chmod(0o644)
+            saved_images.append(image_filename)
+            
+            logger.info("[PDF] Saved page %d as %s", page_num, image_filename)
+        
+        # Update image count
+        playlists_db["playlists"][playlist_id]["image_count"] = len(get_playlist_images(playlist_id))
+        save_playlists_db()
+        
+        logger.info("[PDF] Successfully converted PDF %s to %d images", filename, len(images))
+        
+        return {
+            "status": "success",
+            "message": f"PDF converted to {len(images)} image(s)",
+            "page_count": len(images),
+            "images": saved_images
+        }
+        
+    except Exception as e:
+        logger.error("[PDF] Failed to convert PDF: %s", e)
+        return {"status": "error", "message": f"Failed to convert PDF: {str(e)}"}
 
 
 

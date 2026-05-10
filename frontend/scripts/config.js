@@ -13,6 +13,7 @@ const CONFIG = {
 const CONTENT_TYPES = {
   IMAGE: "image",
   VIDEO: "video",
+  PDF: "pdf",
 };
 
 const PLAYLIST_TYPE_CONFIG = {
@@ -29,6 +30,13 @@ const PLAYLIST_TYPE_CONFIG = {
     emptyIcon: "📹",
     emptyText: "No videos in this playlist",
     emptySubtext: "Download videos from YouTube to get started",
+  },
+  [CONTENT_TYPES.PDF]: {
+    icon: "📄",
+    badge: "📄 PDF",
+    emptyIcon: "📄",
+    emptyText: "No PDF files in this playlist",
+    emptySubtext: "Upload PDF files to get started",
   },
 };
 
