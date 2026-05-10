@@ -471,6 +471,7 @@ def get_playlist_images(playlist_id):
     """Get list of image files from a playlist folder (excluding skipped images)"""
     playlist_dir = PLAYLISTS_DIR / playlist_id
     if not playlist_dir.exists():
+        logger.warning("Playlist directory does not exist: %s", playlist_dir)
         return []
     
     # Get metadata to check skipped images
@@ -479,9 +480,11 @@ def get_playlist_images(playlist_id):
     
     image_extensions = {".jpg", ".jpeg", ".png", ".bmp", ".gif"}
     images = sorted([
-        str(f) for f in playlist_dir.iterdir()
+        str(f.resolve()) for f in playlist_dir.iterdir()
         if f.suffix.lower() in image_extensions and f.is_file() and f.name not in skipped_images
     ])
+    
+    logger.debug("Found %d images in playlist %s", len(images), playlist_id)
     return images
 
 
@@ -536,13 +539,17 @@ def start_slideshow(playlist_id=None):
             "fbi",
             "-t", str(delay),
             "-a",               # Autoscale images to fit screen
-            "--autozoom",       # Enable autozoom for better memory efficiency
-            "--readahead", "1", # Only preload 1 image (reduces RAM usage)
             "--noverbose",
             "-d", framebuffer,
             "-T", "1",
         ] + images
 
+        # Log FBI command for debugging
+        logger.info("FBI Command: %s", ' '.join(cmd[:10]))  # Log first 10 elements
+        logger.info("Total images in command: %d", len(images))
+        if images:
+            logger.info("First 3 images: %s", images[:3])
+        
         logger.info("Starting slideshow with playlist: %s (%d images)", playlist_id, len(images))
 
         env = os.environ.copy()
@@ -552,6 +559,10 @@ def start_slideshow(playlist_id=None):
         with open(fbi_log, "a") as f:
             f.write(f"\n=== Starting slideshow at {__import__('datetime').datetime.now()} ===\n")
             f.write(f"Playlist: {playlist_id}\n")
+            f.write(f"Command: {' '.join(cmd[:15])} ...\n")  # Log command
+            f.write(f"Total images: {len(images)}\n")
+            if images:
+                f.write(f"First image: {images[0]}\n")
 
         with open(fbi_log, "a") as f:
             slideshow_process = subprocess.Popen(
@@ -561,6 +572,20 @@ def start_slideshow(playlist_id=None):
                 stderr=f,
                 env=env
             )
+        
+        # Brief delay to check if process started successfully
+        time.sleep(0.5)
+        if slideshow_process.poll() is not None:
+            # Process already exited - check log for errors
+            logger.error("FBI process exited immediately with code: %d", slideshow_process.returncode)
+            try:
+                with open(fbi_log, "r") as f:
+                    log_tail = f.read()[-500:]  # Last 500 chars
+                    logger.error("FBI log tail: %s", log_tail)
+            except:
+                pass
+            slideshow_process = None
+            return {"status": "error", "message": "FBI failed to start - check fbi_error.log"}
         
         current_playlist = playlist_id
         playlists_db["active_playlist"] = playlist_id
