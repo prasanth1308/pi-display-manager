@@ -538,10 +538,12 @@ def start_slideshow(playlist_id=None):
         cmd = [
             "fbi",
             "-t", str(delay),
+            "-a",
             "--noverbose",
             "-d", framebuffer,
             "-T", "1",
         ] + images
+
         logger.info("Starting slideshow with playlist: %s (%d images)", playlist_id, len(images))
 
         env = os.environ.copy()
@@ -560,6 +562,7 @@ def start_slideshow(playlist_id=None):
                 stderr=f,
                 env=env
             )
+
         
         
         current_playlist = playlist_id
