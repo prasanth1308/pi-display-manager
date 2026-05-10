@@ -561,7 +561,7 @@ def start_slideshow(playlist_id=None):
                 stdout=f,
                 stderr=f,
                 env=env
-            )        
+            )
         
         current_playlist = playlist_id
         playlists_db["active_playlist"] = playlist_id
