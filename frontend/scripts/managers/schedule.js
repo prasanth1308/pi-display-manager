@@ -121,12 +121,11 @@ const ScheduleManager = {
     const time = `${hour.padStart(2, "0")}:${min.padStart(2, "0")}`;
 
     if (dom !== "*" && month !== "*") {
-      // once — reconstruct date using current or next year
+      // once — reconstruct date string directly without timezone conversion
       const year = new Date().getFullYear();
-      let d = new Date(year, parseInt(month, 10) - 1, parseInt(dom, 10));
-      if (d < new Date())
-        d = new Date(year + 1, parseInt(month, 10) - 1, parseInt(dom, 10));
-      const date = d.toISOString().split("T")[0];
+      const monthStr = month.padStart(2, "0");
+      const dayStr = dom.padStart(2, "0");
+      const date = `${year}-${monthStr}-${dayStr}`;
       return { type: "once", time, date, days: [] };
     }
 
