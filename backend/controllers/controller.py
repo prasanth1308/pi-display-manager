@@ -231,7 +231,7 @@ def upload_content(user_info, playlist_id):
     # Large file handling (>10MB)
     if content_length and content_length > 10 * 1024 * 1024:
         upload_id = str(uuid.uuid4())[:8]
-        playlist_dir = VIDEOS_DIR / playlist_id
+        playlist_dir = service.VIDEOS_DIR / playlist_id
         playlist_dir.mkdir(parents=True, exist_ok=True, mode=0o755)
         temp_dest = playlist_dir / f".uploading_{upload_id}.tmp"
         
@@ -309,7 +309,7 @@ def upload_content(user_info, playlist_id):
         video_extensions = {'.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm'}
         
         if file_ext in video_extensions:
-            playlist_dir = VIDEOS_DIR / playlist_id
+            playlist_dir = service.VIDEOS_DIR / playlist_id
             playlist_dir.mkdir(parents=True, exist_ok=True, mode=0o755)
             
             final_path = playlist_dir / filename
@@ -514,7 +514,7 @@ def upload_idle_background(user_info):
         return jsonify({"status": "error", "message": "No file selected"}), 400
     
     ext = Path(file.filename).suffix.lower()
-    dest = IDLE_DIR / f"idle_bg{ext}"
+    dest = service.IDLE_DIR / f"idle_bg{ext}"
     file.save(str(dest))
     
     return jsonify({"status": "success", "image_path": str(dest)})
@@ -609,7 +609,7 @@ def serve_static(filename):
 @require_auth
 def serve_idle_file(user_info, filename):
     """Serve idle screen images"""
-    file_path = IDLE_DIR / filename
+    file_path = service.IDLE_DIR / filename
     if not file_path.exists():
         return jsonify({"status": "error", "message": "File not found"}), 404
     return send_file(file_path)
@@ -618,7 +618,7 @@ def serve_idle_file(user_info, filename):
 @require_auth
 def serve_playlist_file(user_info, playlist_id, filename):
     """Serve playlist images/videos"""
-    file_path = PLAYLISTS_DIR / playlist_id / filename
+    file_path = service.PLAYLISTS_DIR / playlist_id / filename
     if not file_path.exists():
         return jsonify({"status": "error", "message": "File not found"}), 404
     return send_file(file_path)
