@@ -541,8 +541,6 @@ def start_slideshow(playlist_id=None):
             "-a",           # Autoscale images to fit screen
             "--noverbose",
             "-d", framebuffer,
-            "-T", "1",
-            "-u",           # Disable input from stdin (prevents early exit)
         ] + images
 
         # Log complete FBI command for debugging
