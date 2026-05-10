@@ -100,7 +100,7 @@ def load_config():
     except FileNotFoundError:
         logger.warning("Config file not found, using defaults")
         config = {
-            "api_port": 8000,
+            "api_port": 80,
             "delay": 5,
             "framebuffer": "/dev/fb0"
         }

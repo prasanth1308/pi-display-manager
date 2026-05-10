@@ -50,6 +50,15 @@ from services.service import (
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024 * 1024  # 5GB max upload
 
+# Filter out /api/status from access logs
+import logging
+class StatusEndpointFilter(logging.Filter):
+    def filter(self, record):
+        return '/api/status' not in record.getMessage()
+
+# Apply filter to werkzeug logger
+logging.getLogger('werkzeug').addFilter(StatusEndpointFilter())
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Authentication Decorator
 # ═══════════════════════════════════════════════════════════════════════════
@@ -634,7 +643,7 @@ def initialize_app():
     start_scheduler()
     
     service.logger.info("=== Pi Display Manager Flask Started ===")
-    service.logger.info("API running on http://localhost:%d", service.config.get("api_port", 8000))
+    service.logger.info("API running on http://localhost:%d", service.config.get("api_port", 80))
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Main Entry Point
@@ -642,5 +651,5 @@ def initialize_app():
 
 if __name__ == "__main__":
     initialize_app()
-    port = service.config.get("api_port", 8000) if service.config else 8000
+    port = service.config.get("api_port", 80) if service.config else 80
     app.run(host="0.0.0.0", port=port, threaded=True, debug=False)

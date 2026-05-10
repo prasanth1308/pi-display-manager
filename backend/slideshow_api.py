@@ -33,7 +33,7 @@ if __name__ == "__main__":
         # Initialize application
         initialize_app()
         
-        port = config.get("api_port", 8000) if config else 8000
+        port = config.get("api_port", 80) if config else 80
         
         print("=" * 70)
         print("🚀 Pi Display Manager - Flask Server")

@@ -17,7 +17,8 @@ failed_attempts = {}
 # Load auth configuration
 def load_auth_config():
     """Load authentication configuration from auth.json"""
-    auth_file = Path(__file__).parent.parent / "auth.json"
+    # Auth file is in project root (parent of backend/)
+    auth_file = Path(__file__).parent.parent.parent / "auth.json"
     
     if not auth_file.exists():
         # Create default auth.json if not exists

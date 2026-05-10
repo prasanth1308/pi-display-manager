@@ -99,10 +99,10 @@ def main():
     print("=" * 60)
     
     # Test configuration
-    old_server = "http://localhost:8000"
-    new_server = "http://localhost:8000"
+    old_server = "http://localhost:80"
+    new_server = "http://localhost:80"
     
-    print("\nℹ️  Make sure one server is running on port 8000")
+    print("\nℹ️  Make sure one server is running on port 80")
     print("   Old: python3 slideshow_api.py")
     print("   New: python3 slideshow_api_fastapi.py")
     

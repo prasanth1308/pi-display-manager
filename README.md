@@ -63,13 +63,13 @@ The setup script will:
 Open a web browser and navigate to:
 
 ```
-http://<raspberry-pi-ip>:8000
+http://<raspberry-pi-ip>
 ```
 
 Or if accessing locally on the Pi:
 
 ```
-http://localhost:8000
+http://localhost
 ```
 
 ## Project Structure
@@ -152,13 +152,13 @@ Edit `config.json` to customize settings:
 
 ```json
 {
-  "api_port": 8000,
+  "api_port": 80,
   "delay": 5,
   "framebuffer": "/dev/fb0"
 }
 ```
 
-- **api_port**: Port for the web interface (default: 8000)
+- **api_port**: Port for the web interface (default: 80)
 - **delay**: Seconds between images (default: 5)
 - **framebuffer**: Framebuffer device path (default: /dev/fb0)
 
@@ -383,7 +383,7 @@ sudo dd if=/dev/zero of=/dev/fb0 bs=1M count=10
 sudo journalctl -u pi-slideshow -n 50
 
 # Check if port is available
-sudo netstat -tulpn | grep 8000
+sudo netstat -tulpn | grep 80
 
 # Verify Python script
 python3 slideshow_api_fastapi.py
@@ -412,7 +412,7 @@ sudo systemctl status pi-slideshow
 sudo ufw status
 
 # Test locally
-curl http://localhost:8000/api/health
+curl http://localhost/api/health
 ```
 
 ### Images remain on screen after stop
@@ -422,7 +422,7 @@ curl http://localhost:8000/api/health
 sudo dd if=/dev/zero of=/dev/fb0 bs=1M count=10
 
 # Or use the API
-curl http://localhost:8000/api/clear
+curl http://localhost/api/clear
 ```
 
 ## Migration from Old Version
