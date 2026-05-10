@@ -74,11 +74,15 @@ const UI = {
    */
   updateContentButtons(playlistType) {
     if (playlistType === CONTENT_TYPES.VIDEO) {
-      DOM.uploadImageBtn.style.display = "none";
-      DOM.downloadVideoTriggerBtn.style.display = "inline-block";
+      DOM.uploadImageBtn.style.display = "inline-flex";
+      DOM.uploadImageBtn.textContent = "📤 Upload Video";
+      DOM.downloadVideoTriggerBtn.style.display = "inline-flex";
+      DOM.videoUploadNote.style.display = "block";
     } else {
-      DOM.uploadImageBtn.style.display = "inline-block";
+      DOM.uploadImageBtn.style.display = "inline-flex";
+      DOM.uploadImageBtn.textContent = "📤 Upload Images";
       DOM.downloadVideoTriggerBtn.style.display = "none";
+      DOM.videoUploadNote.style.display = "none";
     }
   },
 

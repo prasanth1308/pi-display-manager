@@ -69,7 +69,7 @@ const ImageManager = {
   },
 
   /**
-   * Handle file upload
+   * Handle file upload (images or videos)
    */
   async upload(event) {
     const files = Array.from(event.target.files);
@@ -81,38 +81,124 @@ const ImageManager = {
       return;
     }
 
-    UI.showLoading();
+    // Check if any file is a video
+    const videoExtensions = ["mp4", "avi", "mkv", "mov", "wmv", "flv", "webm"];
+    const hasVideo = files.some((file) => {
+      const ext = file.name.split(".").pop().toLowerCase();
+      return videoExtensions.includes(ext);
+    });
+
+    // If video, only allow 1 file
+    if (hasVideo && files.length > 1) {
+      UI.showToast(
+        "Only one video can be uploaded at a time",
+        TOAST_TYPES.WARNING,
+      );
+      return;
+    }
 
     let successCount = 0;
     let failCount = 0;
 
     for (const file of files) {
       const formData = new FormData();
-      formData.append("image", file);
+      const ext = file.name.split(".").pop().toLowerCase();
+      const isVideo = videoExtensions.includes(ext);
 
-      const data = await API.uploadImage(AppState.selectedPlaylistId, formData);
+      // Check if it's a large video file (>10MB)
+      const isLargeVideo = isVideo && file.size > 10 * 1024 * 1024;
 
-      if (data && data.status === "success") {
-        successCount++;
+      // Use appropriate form field name
+      formData.append(isVideo ? "video" : "image", file);
+
+      if (isLargeVideo) {
+        // Show progress for large video uploads using XHR progress events
+        UI.showProgress(`Uploading ${file.name}...`, 0);
+
+        try {
+          const data = await API.uploadImageWithProgress(
+            AppState.selectedPlaylistId,
+            formData,
+            (percentComplete, loaded, total) => {
+              const sizeMB = (loaded / (1024 * 1024)).toFixed(1);
+              const totalMB = (total / (1024 * 1024)).toFixed(1);
+              UI.showProgress(
+                `Uploading ${file.name}...`,
+                Math.floor(percentComplete),
+                `${sizeMB} MB / ${totalMB} MB`,
+              );
+            },
+          );
+
+          if (data && data.status === "success") {
+            UI.showProgress("Upload complete!", 100, "Processing...");
+
+            // Poll downscale progress if downscale_id exists
+            if (data.downscale_id) {
+              AppState.startPolling(() =>
+                this.pollDownscaleStatus(data.downscale_id),
+              );
+            } else {
+              setTimeout(() => {
+                UI.hideProgress();
+              }, 1000);
+            }
+            successCount++;
+          } else {
+            UI.hideProgress();
+            failCount++;
+            if (data && data.message) {
+              UI.showToast(data.message, TOAST_TYPES.ERROR);
+            }
+          }
+        } catch (error) {
+          UI.hideProgress();
+          failCount++;
+          UI.showToast(`Upload failed: ${error.message}`, TOAST_TYPES.ERROR);
+        }
       } else {
-        failCount++;
+        // Small files - use regular upload
+        UI.showLoading();
+        const data = await API.uploadImage(
+          AppState.selectedPlaylistId,
+          formData,
+        );
+
+        UI.hideLoading();
+
+        if (data && data.status === "success") {
+          successCount++;
+        } else {
+          failCount++;
+          if (data && data.message) {
+            UI.showToast(data.message, TOAST_TYPES.ERROR);
+          }
+        }
       }
     }
 
-    UI.hideLoading();
-
     if (successCount > 0) {
+      const fileType = hasVideo ? "video" : "image";
+      const plural = successCount !== 1 && !hasVideo ? "s" : "";
       UI.showToast(
-        `${successCount} image${successCount !== 1 ? "s" : ""} uploaded successfully`,
+        `${successCount} ${fileType}${plural} uploaded successfully`,
         TOAST_TYPES.SUCCESS,
       );
-      this.load(AppState.selectedPlaylistId);
+
+      // Reload appropriate content type
+      if (hasVideo) {
+        await VideoManager.load(AppState.selectedPlaylistId);
+      } else {
+        await this.load(AppState.selectedPlaylistId);
+      }
       PlaylistManager.load(); // Refresh to update counts
     }
 
     if (failCount > 0) {
+      const fileType = hasVideo ? "video" : "image";
+      const plural = failCount !== 1 && !hasVideo ? "s" : "";
       UI.showToast(
-        `${failCount} image${failCount !== 1 ? "s" : ""} failed to upload`,
+        `${failCount} ${fileType}${plural} failed to upload`,
         TOAST_TYPES.ERROR,
       );
     }
@@ -166,6 +252,56 @@ const ImageManager = {
         data?.message || "Failed to update image",
         TOAST_TYPES.ERROR,
       );
+    }
+  },
+
+  /**
+   * Poll downscale status
+   */
+  async pollDownscaleStatus(downscaleId) {
+    const data = await API.getDownscaleStatus(downscaleId);
+
+    if (!data) {
+      AppState.stopPolling();
+      UI.hideProgress();
+      return;
+    }
+
+    if (data.status === "checking") {
+      UI.showProgress(data.message || "Checking video...", data.progress || 0);
+    } else if (data.status === "downscaling") {
+      UI.showProgress(
+        data.message || "Downscaling video...",
+        data.progress || 0,
+      );
+    } else if (data.status === "completed") {
+      UI.showProgress("Processing complete!", 100);
+      AppState.stopPolling();
+
+      // Refresh video list and playlists
+      await VideoManager.load(AppState.selectedPlaylistId);
+      PlaylistManager.load();
+
+      setTimeout(() => UI.hideProgress(), CONFIG.PROGRESS_HIDE_DELAY);
+    } else if (data.status === "skipped") {
+      UI.showProgress(data.message || "No downscaling needed", 100);
+      AppState.stopPolling();
+
+      // Refresh video list and playlists
+      await VideoManager.load(AppState.selectedPlaylistId);
+      PlaylistManager.load();
+
+      setTimeout(() => UI.hideProgress(), CONFIG.PROGRESS_HIDE_DELAY);
+    } else if (data.status === "error") {
+      UI.showProgress(data.message || "Processing failed", 0);
+      UI.showToast("Video processing failed", TOAST_TYPES.WARNING);
+      AppState.stopPolling();
+
+      // Still refresh in case video was saved
+      await VideoManager.load(AppState.selectedPlaylistId);
+      PlaylistManager.load();
+
+      setTimeout(() => UI.hideProgress(), CONFIG.PROGRESS_HIDE_DELAY);
     }
   },
 };

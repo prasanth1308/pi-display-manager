@@ -63,13 +63,13 @@ The setup script will:
 Open a web browser and navigate to:
 
 ```
-http://<raspberry-pi-ip>:8000
+http://<raspberry-pi-ip>
 ```
 
 Or if accessing locally on the Pi:
 
 ```
-http://localhost:8000
+http://localhost
 ```
 
 ## Project Structure
@@ -77,11 +77,13 @@ http://localhost:8000
 ```
 pi-display-manager/
 ├── backend/                   # Backend API (MVC Architecture)
-│   ├── slideshow_api.py      # Main entry point
-│   ├── service.py            # Service layer (business logic)
-│   ├── controller.py         # Controller layer (HTTP handling)
-│   ├── auth.py               # Authentication service
-│   └── slideshow_api_backup.py  # Original monolithic version
+│   ├── slideshow_api.py      # Main entry point (Flask)
+│   ├── controllers/          # Controller layer
+│   │   └── controller.py     # Flask REST API controller
+│   ├── services/             # Service layer (business logic)
+│   │   ├── service.py        # Core business logic
+│   │   └── auth.py           # Authentication service
+│   └── tests/                # Test files
 ├── frontend/                  # Web interface files
 │   ├── index.html            # Main application page
 │   ├── login.html            # Login page
@@ -133,14 +135,16 @@ The backend follows an **MVC (Model-View-Controller)** pattern:
   - Framebuffer operations
   - Database persistence
 
-- **`controller.py`** - Controller layer handling HTTP requests:
-  - RESTful API endpoints
-  - Request routing and validation
-  - HTTP response formatting
-  - Static file serving
-  - Error handling
+- **`auth.py`** - Authentication service handling user login and session management
 
-- **`slideshow_api.py`** - Entry point that initializes and runs the application
+- **`controller.py`** - Flask controller with lightweight REST API:
+  - RESTful API endpoints
+  - Request routing with decorator-based authentication
+  - JSON request/response handling
+  - Static file serving
+  - Comprehensive error handling
+
+- **`slideshow_api.py`** - Entry point that initializes and runs the Flask application
 
 ## Configuration
 
@@ -148,13 +152,13 @@ Edit `config.json` to customize settings:
 
 ```json
 {
-  "api_port": 8000,
+  "api_port": 80,
   "delay": 5,
   "framebuffer": "/dev/fb0"
 }
 ```
 
-- **api_port**: Port for the web interface (default: 8000)
+- **api_port**: Port for the web interface (default: 80)
 - **delay**: Seconds between images (default: 5)
 - **framebuffer**: Framebuffer device path (default: /dev/fb0)
 
@@ -379,10 +383,10 @@ sudo dd if=/dev/zero of=/dev/fb0 bs=1M count=10
 sudo journalctl -u pi-slideshow -n 50
 
 # Check if port is available
-sudo netstat -tulpn | grep 8000
+sudo netstat -tulpn | grep 80
 
 # Verify Python script
-python3 slideshow_api.py
+python3 slideshow_api_fastapi.py
 ```
 
 ### Images not displaying
@@ -408,7 +412,7 @@ sudo systemctl status pi-slideshow
 sudo ufw status
 
 # Test locally
-curl http://localhost:8000/api/health
+curl http://localhost/api/health
 ```
 
 ### Images remain on screen after stop
@@ -418,7 +422,7 @@ curl http://localhost:8000/api/health
 sudo dd if=/dev/zero of=/dev/fb0 bs=1M count=10
 
 # Or use the API
-curl http://localhost:8000/api/clear
+curl http://localhost/api/clear
 ```
 
 ## Migration from Old Version
@@ -442,7 +446,7 @@ sudo cp /home/larokiaraj/pi/*.{jpg,jpeg,png,gif,bmp} \
 sudo systemctl stop pi-slideshow
 
 # Run manually
-python3 slideshow_api.py
+python3 slideshow_api_fastapi.py
 
 # Access logs in terminal
 ```

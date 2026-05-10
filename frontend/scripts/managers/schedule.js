@@ -104,8 +104,9 @@ const ScheduleManager = {
     if (type === "once") {
       const dateStr = document.getElementById("schedule-date").value;
       if (!dateStr) return null;
-      const d = new Date(dateStr);
-      return `${min} ${hour} ${d.getDate()} ${d.getMonth() + 1} *`;
+      // Parse date string manually to avoid timezone issues
+      const [year, month, day] = dateStr.split("-").map(Number);
+      return `${min} ${hour} ${day} ${month} *`;
     }
 
     return null;
@@ -113,17 +114,18 @@ const ScheduleManager = {
 
   _parseCronToUI(cron) {
     const parts = cron.trim().split(/\s+/);
-    if (parts.length !== 5) return { type: "daily", time: "08:00", date: "", days: [] };
+    if (parts.length !== 5)
+      return { type: "daily", time: "08:00", date: "", days: [] };
 
     const [min, hour, dom, month, dow] = parts;
     const time = `${hour.padStart(2, "0")}:${min.padStart(2, "0")}`;
 
     if (dom !== "*" && month !== "*") {
-      // once — reconstruct date using current or next year
+      // once — reconstruct date string directly without timezone conversion
       const year = new Date().getFullYear();
-      let d = new Date(year, parseInt(month, 10) - 1, parseInt(dom, 10));
-      if (d < new Date()) d = new Date(year + 1, parseInt(month, 10) - 1, parseInt(dom, 10));
-      const date = d.toISOString().split("T")[0];
+      const monthStr = month.padStart(2, "0");
+      const dayStr = dom.padStart(2, "0");
+      const date = `${year}-${monthStr}-${dayStr}`;
       return { type: "once", time, date, days: [] };
     }
 
@@ -176,13 +178,16 @@ const ScheduleManager = {
 
   showCreateModal() {
     this._populatePlaylistSelect();
-    document.getElementById("schedule-modal-title").textContent = "New Schedule";
+    document.getElementById("schedule-modal-title").textContent =
+      "New Schedule";
     document.getElementById("schedule-id").value = "";
     DOM.scheduleNameInput.value = "";
     DOM.scheduleTimeInput.value = "08:00";
     document.getElementById("schedule-type").value = "daily";
     document.getElementById("schedule-date").value = "";
-    document.querySelectorAll('input[name="sched-day"]').forEach((cb) => (cb.checked = false));
+    document
+      .querySelectorAll('input[name="sched-day"]')
+      .forEach((cb) => (cb.checked = false));
     document.getElementById("schedule-enabled").checked = true;
     this._showTypeFields("daily");
     DOM.scheduleModal.classList.add("show");
@@ -191,7 +196,8 @@ const ScheduleManager = {
   showEditModal(id) {
     API.getSchedule(id).then((s) => {
       this._populatePlaylistSelect();
-      document.getElementById("schedule-modal-title").textContent = "Edit Schedule";
+      document.getElementById("schedule-modal-title").textContent =
+        "Edit Schedule";
       document.getElementById("schedule-id").value = s.id;
       DOM.scheduleNameInput.value = s.name;
       DOM.schedulePlaylistSelect.value = s.playlist_id;
@@ -230,9 +236,7 @@ const ScheduleManager = {
     }
     if (!cron) {
       const msg =
-        type === "weekly"
-          ? "Select at least one day"
-          : "Select a date";
+        type === "weekly" ? "Select at least one day" : "Select a date";
       UI.showToast(msg, TOAST_TYPES.ERROR);
       return;
     }

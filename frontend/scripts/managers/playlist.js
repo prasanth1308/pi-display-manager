@@ -142,6 +142,7 @@ const PlaylistManager = {
     DOM.playlistNameInput.value = "";
     DOM.playlistModal.classList.add("show");
     DOM.playlistNameInput.focus();
+    this.toggleDelayVisibility();
   },
 
   /**
@@ -149,6 +150,22 @@ const PlaylistManager = {
    */
   hideCreateModal() {
     DOM.playlistModal.classList.remove("show");
+  },
+
+  /**
+   * Toggle delay field visibility based on playlist type
+   */
+  toggleDelayVisibility() {
+    const isVideoPlaylist =
+      DOM.playlistTypeSelect.value === CONTENT_TYPES.VIDEO;
+    const displayStyle = isVideoPlaylist ? "none" : "block";
+
+    if (DOM.playlistDelayLabel) {
+      DOM.playlistDelayLabel.style.display = displayStyle;
+    }
+    if (DOM.playlistDelayInput) {
+      DOM.playlistDelayInput.style.display = displayStyle;
+    }
   },
 
   /**

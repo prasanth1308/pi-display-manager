@@ -23,13 +23,12 @@ config = {}
 playlists_db = {}
 current_playlist = None
 download_status = {}  # Track video download status
-api_port = 8000
+downscale_status = {}  # Track video downscaling progress
 logger = None
-BASE_DIR = Path(__file__).parent.parent
+BASE_DIR = Path(__file__).parent.parent.parent
 DATA_DIR = BASE_DIR / "data"
 PLAYLISTS_DIR = DATA_DIR / "playlists"
 VIDEOS_DIR = DATA_DIR / "videos"
-UPLOADS_DIR = DATA_DIR / "uploads"
 IDLE_DIR = DATA_DIR / "idle"
 PLAYLISTS_DB_FILE = BASE_DIR / "playlists.json"
 IDLE_CONFIG_FILE = BASE_DIR / "idle_config.json"
@@ -84,7 +83,6 @@ def ensure_directories():
     """Create necessary directories if they don't exist"""
     PLAYLISTS_DIR.mkdir(parents=True, exist_ok=True)
     VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
-    UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
     IDLE_DIR.mkdir(parents=True, exist_ok=True)
     STATIC_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -102,7 +100,7 @@ def load_config():
     except FileNotFoundError:
         logger.warning("Config file not found, using defaults")
         config = {
-            "api_port": 8000,
+            "api_port": 80,
             "delay": 5,
             "framebuffer": "/dev/fb0"
         }
@@ -651,7 +649,7 @@ def create_playlist(name, playlist_type="image", delay=5):
         base_dir = PLAYLISTS_DIR
     
     playlist_dir = base_dir / playlist_id
-    playlist_dir.mkdir(exist_ok=True)
+    playlist_dir.mkdir(exist_ok=True, mode=0o755)
     
     playlists_db["playlists"][playlist_id] = {
         "name": name,
@@ -784,6 +782,7 @@ def upload_image(playlist_id, file_data, filename):
     except Exception as e:
         logger.error("Failed to upload image: %s", e)
         return {"status": "error", "message": str(e)}
+
 
 
 def skip_image(playlist_id, filename):
@@ -927,8 +926,148 @@ def get_playlist_videos_list(playlist_id):
     return {"status": "success", "playlist_id": playlist_id, "videos": videos}
 
 
+def parse_multipart_form_data_streaming(content_type, file_obj, content_length, output_path, upload_id=None):
+    """Parse multipart/form-data by streaming to disk to avoid RAM exhaustion"""
+    
+    logger.info("[UPLOAD] Starting streaming upload - content_length: %d bytes (%.2f MB), upload_id: %s", 
+                content_length, content_length / (1024 * 1024), upload_id)
+    
+    try:
+        
+        # Extract boundary from content type
+        boundary = None
+        for part in content_type.split(';'):
+            part = part.strip()
+            if part.startswith('boundary='):
+                boundary = part.split('=', 1)[1].strip('"')
+                break
+        
+        if not boundary:
+            logger.error("[UPLOAD] No boundary found in Content-Type: %s", content_type)
+            return None
+        
+        logger.info("[UPLOAD] Boundary extracted: %s", boundary[:50])
+        
+        boundary_bytes = ('--' + boundary).encode()
+        boundary_len = len(boundary_bytes)
+        
+        # Buffer for reading chunks
+        chunk_size = 8192  # 8KB chunks
+        buffer = b''
+        filename = None
+        in_file_content = False
+        out_file = None
+        bytes_written = 0
+        bytes_read = 0  # Track total bytes consumed from stream
+        
+        logger.info("[UPLOAD] Starting read loop - chunk_size: %d bytes", chunk_size)
+        
+        try:
+            while bytes_read < content_length:
+                # Read remaining bytes, capped at chunk size
+                to_read = min(chunk_size, content_length - bytes_read)
+                chunk = file_obj.read(to_read)
+                if not chunk:
+                    logger.warning("[UPLOAD] Read returned empty chunk - bytes_read: %d / %d", 
+                                  bytes_read, content_length)
+                    break
+                
+                bytes_read += len(chunk)
+                buffer += chunk
+                
+                # Log progress every 10MB
+                if bytes_read % (10 * 1024 * 1024) < chunk_size:
+                    logger.debug("[UPLOAD] Read progress: %d / %d bytes (%.1f%%)", 
+                                bytes_read, content_length, (bytes_read / content_length * 100))
+                
+                # Look for headers if not yet in file content
+                if not in_file_content:
+                    header_end = buffer.find(b'\r\n\r\n')
+                    if header_end != -1:
+                        headers_data = buffer[:header_end]
+                        headers_str = headers_data.decode('utf-8', errors='ignore')
+                        
+                        logger.debug("[UPLOAD] Found headers at position %d: %s", header_end, headers_str[:200])
+                        
+                        # Extract filename
+                        for line in headers_str.split('\r\n'):
+                            if 'Content-Disposition:' in line:
+                                for param in line.split(';'):
+                                    param = param.strip()
+                                    if 'filename=' in param:
+                                        filename = param.split('=', 1)[1].strip('"')
+                                        break
+                        
+                        if filename:
+                            # Start writing file content
+                            logger.info("[UPLOAD] Headers parsed - filename: %s, starting file write to: %s", 
+                                       filename, output_path)
+                            buffer = buffer[header_end + 4:]
+                            out_file = open(output_path, 'wb')
+                            in_file_content = True
+                        else:
+                            logger.warning("[UPLOAD] No filename found in headers: %s", headers_str)
+                
+                # Write file content, checking for boundary
+                if in_file_content and out_file:
+                    # Check if we have a boundary in buffer
+                    boundary_pos = buffer.find(boundary_bytes)
+                    if boundary_pos != -1:
+                        # Write everything before boundary (minus \r\n)
+                        end_pos = boundary_pos - 2 if boundary_pos >= 2 else boundary_pos
+                        if end_pos > 0:
+                            out_file.write(buffer[:end_pos])
+                            bytes_written += end_pos
+                        
+                        logger.info("[UPLOAD] Boundary detected at position %d - file complete: %d bytes written (%.2f MB)", 
+                                   boundary_pos, bytes_written, bytes_written / (1024 * 1024))
+                        
+                        # Clear buffer and continue reading to consume entire request
+                        logger.info("[UPLOAD] Continuing to consume remaining stream data...")
+                        buffer = b''
+                        continue
+                    else:
+                        # Keep last chunk in buffer in case boundary is split
+                        if len(buffer) > boundary_len + 10:
+                            write_size = len(buffer) - (boundary_len + 10)
+                            out_file.write(buffer[:write_size])
+                            bytes_written += write_size
+                            buffer = buffer[write_size:]
+            
+            # Log when loop exits
+            logger.info("[UPLOAD] Read loop complete - bytes_read: %d / %d, in_file_content: %s, filename: %s", 
+                       bytes_read, content_length, in_file_content, filename)
+        
+        finally:
+            logger.info("[UPLOAD] Closing file - total bytes_read: %d, bytes_written: %d", 
+                       bytes_read, bytes_written)
+            if out_file:
+                out_file.close()
+        
+        if filename and bytes_written > 0:
+            logger.info("[UPLOAD] Upload SUCCESS - filename: %s, size: %d bytes (%.2f MB)", 
+                       filename, bytes_written, bytes_written / (1024 * 1024))
+            return {'filename': filename, 'path': str(output_path), 'size': bytes_written}
+        
+        # Clean up if failed
+        logger.warning("[UPLOAD] Upload FAILED - filename: %s, bytes_written: %d", filename, bytes_written)
+        if output_path.exists():
+            output_path.unlink()
+        
+        return None
+    
+    except Exception as e:
+        logger.error("[UPLOAD] EXCEPTION in streaming parser: %s", e, exc_info=True)
+        if output_path and output_path.exists():
+            output_path.unlink()
+        return None
+
+
 def parse_multipart_form_data(content_type, body, expected_field="image"):
-    """Parse multipart/form-data without using deprecated cgi module"""
+    """Parse multipart/form-data without using deprecated cgi module (for small files)"""
+    logger.info("[PARSE-SMALL] Starting in-memory parser - body size: %d bytes, expected_field: %s", 
+               len(body), expected_field)
+    
     try:
         # Extract boundary from content type
         boundary = None
@@ -939,20 +1078,27 @@ def parse_multipart_form_data(content_type, body, expected_field="image"):
                 break
         
         if not boundary:
+            logger.error("[PARSE-SMALL] No boundary found in Content-Type")
             return None
+        
+        logger.info("[PARSE-SMALL] Boundary extracted: %s", boundary[:50])
         
         # Split body by boundary
         boundary_bytes = ('--' + boundary).encode()
         parts = body.split(boundary_bytes)
+        logger.info("[PARSE-SMALL] Split into %d parts", len(parts))
         
         for part in parts:
             if not part or part == b'--\r\n' or part == b'--':
                 continue
             
+            logger.debug("[PARSE-SMALL] Processing part of size: %d bytes", len(part))
+            
             # Split headers and content
             try:
                 header_end = part.find(b'\r\n\r\n')
                 if header_end == -1:
+                    logger.debug("[PARSE-SMALL] No header separator found, skipping part")
                     continue
                 
                 headers_data = part[:header_end]
@@ -962,10 +1108,14 @@ def parse_multipart_form_data(content_type, body, expected_field="image"):
                 if content.endswith(b'\r\n'):
                     content = content[:-2]
                 
+                logger.debug("[PARSE-SMALL] Content size after trimming: %d bytes", len(content))
+                
                 # Parse headers
                 headers_str = headers_data.decode('utf-8', errors='ignore')
                 filename = None
                 field_name = None
+                
+                logger.debug("[PARSE-SMALL] Headers: %s", headers_str[:200])
                 
                 for line in headers_str.split('\r\n'):
                     if line.startswith('Content-Disposition:'):
@@ -977,17 +1127,23 @@ def parse_multipart_form_data(content_type, body, expected_field="image"):
                             elif 'name=' in param:
                                 field_name = param.split('=', 1)[1].strip('"')
                 
+                logger.info("[PARSE-SMALL] Parsed - field_name: %s, filename: %s, content_len: %d, expected: %s", 
+                           field_name, filename, len(content) if content else 0, expected_field)
+                
                 if field_name == expected_field and filename and content:
+                    logger.info("[PARSE-SMALL] SUCCESS - returning file: %s (%d bytes)", filename, len(content))
                     return {'filename': filename, 'data': content}
             
             except Exception as e:
-                logger.error("Error parsing multipart section: %s", e)
+                logger.error("[PARSE-SMALL] Error parsing multipart section: %s", e)
                 continue
         
+        logger.warning("[PARSE-SMALL] No matching file found after processing all parts")
         return None
     
     except Exception as e:
-        logger.error("Error parsing multipart form data: %s", e)
+        logger.error("[PARSE-SMALL] EXCEPTION in parser: %s", e, exc_info=True)
+        return None
         return None
 
 
@@ -1020,6 +1176,225 @@ def is_youtube_url(url):
         parsed = urlparse(url)
         return any(domain in parsed.netloc for domain in youtube_domains)
     except:
+        return False
+
+
+def downscale_video_to_1080p(video_path, downscale_id=None):
+    """Downscale video to 1080p using ffmpeg if resolution is higher"""
+    global downscale_status
+    temp_output = None
+    
+    try:
+        # Initialize status if downscale_id provided
+        if downscale_id:
+            downscale_status[downscale_id] = {
+                "status": "checking",
+                "progress": 0,
+                "message": "Checking video resolution..."
+            }
+        
+        # Check current resolution using ffprobe
+        probe_cmd = [
+            'ffprobe', '-v', 'error',
+            '-select_streams', 'v:0',
+            '-show_entries', 'stream=width,height',
+            '-of', 'csv=p=0',
+            str(video_path)
+        ]
+        
+        result = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=10)
+        if result.returncode != 0:
+            logger.warning("[DOWNSCALE] Could not probe video resolution: %s", result.stderr)
+            if downscale_id:
+                downscale_status[downscale_id] = {
+                    "status": "error",
+                    "progress": 0,
+                    "message": "Could not probe video resolution"
+                }
+            return True  # Skip downscaling but don't fail
+        
+        # Parse width,height
+        resolution = result.stdout.strip().split(',')
+        if len(resolution) != 2:
+            logger.warning("[DOWNSCALE] Invalid resolution format: %s", result.stdout)
+            if downscale_id:
+                downscale_status[downscale_id] = {
+                    "status": "error",
+                    "progress": 0,
+                    "message": "Invalid resolution format"
+                }
+            return True
+        
+        width, height = int(resolution[0]), int(resolution[1])
+        logger.info("[DOWNSCALE] Video resolution: %dx%d", width, height)
+        
+        # Only downscale if height > 1080 or width > 1920
+        if height <= 1080 and width <= 1920:
+            logger.info("[DOWNSCALE] Video already at or below 1080p, skipping")
+            if downscale_id:
+                downscale_status[downscale_id] = {
+                    "status": "skipped",
+                    "progress": 100,
+                    "message": f"Video already at {width}x{height}, no downscaling needed"
+                }
+            return True
+        
+        logger.info("[DOWNSCALE] Downscaling video from %dx%d to 1080p...", width, height)
+        if downscale_id:
+            downscale_status[downscale_id] = {
+                "status": "downscaling",
+                "progress": 5,
+                "message": f"Downscaling from {width}x{height} to 1080p..."
+            }
+        
+        # Get video duration for progress calculation
+        duration_cmd = [
+            'ffprobe', '-v', 'error',
+            '-show_entries', 'format=duration',
+            '-of', 'default=noprint_wrappers=1:nokey=1',
+            str(video_path)
+        ]
+        duration_result = subprocess.run(duration_cmd, capture_output=True, text=True, timeout=10)
+        duration = float(duration_result.stdout.strip()) if duration_result.returncode == 0 else 0
+        logger.info("[DOWNSCALE] Video duration: %.2f seconds", duration)
+        
+        # Create temp output file
+        temp_output = video_path.parent / f".downscaling_{video_path.name}"
+        
+        # Try hardware-accelerated encoding first (h264_omx for Raspberry Pi)
+        ffmpeg_cmd = [
+            'ffmpeg',
+            '-i', str(video_path),
+            '-vf', 'scale=-2:1080,fps=30,format=yuv420p',  # Scale, 30fps, and ensure yuv420p for compatibility
+            '-c:v', 'h264_v4l2m2m',
+            '-b:v', '4M',  # Higher bitrate for better quality at 30fps
+            '-bufsize', '6000k',
+            '-vsync', 'cfr',  # Constant frame rate for smooth playback
+            '-an',  # Disable audio
+            '-progress', 'pipe:1',
+            '-y',
+            str(temp_output)
+        ]
+        
+        logger.info("[DOWNSCALE-HARDWARE] Running: %s", ' '.join(ffmpeg_cmd))
+        success = _run_ffmpeg_with_progress(ffmpeg_cmd, duration, downscale_id, "hardware", timeout=600)
+        
+        if not success:
+            logger.error("[DOWNSCALE] Hardware encoding failed")
+            if temp_output and temp_output.exists():
+                temp_output.unlink()
+            if downscale_id:
+                downscale_status[downscale_id] = {
+                    "status": "error",
+                    "progress": 0,
+                    "message": "Hardware encoding failed"
+                }
+            return False
+        
+        # Replace original with downscaled version
+        temp_output.replace(video_path)
+        logger.info("[DOWNSCALE] Successfully downscaled video to 1080p")
+        if downscale_id:
+            downscale_status[downscale_id] = {
+                "status": "completed",
+                "progress": 100,
+                "message": "Video downscaled successfully"
+            }
+        return True
+        
+    except subprocess.TimeoutExpired:
+        logger.error("[DOWNSCALE] Downscaling timed out")
+        if temp_output and temp_output.exists():
+            temp_output.unlink()
+        if downscale_id:
+            downscale_status[downscale_id] = {
+                "status": "error",
+                "progress": 0,
+                "message": "Downscaling timed out"
+            }
+        return False
+    except Exception as e:
+        logger.error("[DOWNSCALE] Downscaling failed: %s", str(e))
+        if temp_output and temp_output.exists():
+            temp_output.unlink()
+        if downscale_id:
+            downscale_status[downscale_id] = {
+                "status": "error",
+                "progress": 0,
+                "message": f"Error: {str(e)}"
+            }
+        return False
+
+
+def _run_ffmpeg_with_progress(cmd, duration, downscale_id, mode, timeout):
+    """Run ffmpeg command and parse progress output"""
+    global downscale_status
+    
+    try:
+        # Lower process priority to reduce resource impact
+        # nice value of 10 means lower priority (range: -20 to 19)
+        nice_cmd = ['nice', '-n', '10'] + cmd
+        
+        process = subprocess.Popen(
+            nice_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+            bufsize=1
+        )
+        
+        last_progress = 0
+        start_time = time.time()
+        
+        # Read progress output line by line
+        for line in process.stdout:
+            line = line.strip()
+            
+            # Check timeout
+            if time.time() - start_time > timeout:
+                process.kill()
+                logger.error("[DOWNSCALE-%s] Timeout after %d seconds", mode.upper(), timeout)
+                return False
+            
+            # Parse out_time_ms from ffmpeg progress
+            if line.startswith('out_time_ms='):
+                try:
+                    time_ms = int(line.split('=')[1])
+                    time_sec = time_ms / 1000000.0  # Convert microseconds to seconds
+                    
+                    if duration > 0:
+                        progress = min(int((time_sec / duration) * 100), 99)
+                        
+                        # Only update every 10% to reduce noise
+                        if progress >= last_progress + 10:
+                            last_progress = progress
+                            logger.info("[DOWNSCALE-%s] Progress: %d%% (%.1f/%.1f seconds)", 
+                                      mode.upper(), progress, time_sec, duration)
+                            
+                            if downscale_id:
+                                downscale_status[downscale_id]["progress"] = progress
+                except (ValueError, IndexError):
+                    pass
+        
+        # Wait for process to complete
+        process.wait(timeout=10)
+        
+        if process.returncode != 0:
+            stderr = process.stderr.read()
+            logger.error("[DOWNSCALE-%s] Failed with code %d: %s", 
+                        mode.upper(), process.returncode, stderr[-500:] if stderr else "")
+            return False
+        
+        logger.info("[DOWNSCALE-%s] Completed successfully", mode.upper())
+        return True
+        
+    except Exception as e:
+        logger.error("[DOWNSCALE-%s] Error: %s", mode.upper(), str(e))
+        if 'process' in locals():
+            try:
+                process.kill()
+            except:
+                pass
         return False
 
 
@@ -1109,6 +1484,7 @@ def download_youtube_video(playlist_id, video_url, download_id):
                 "status": "completed",
                 "progress": 100,
                 "filename": new_filename,
+                "downscale_id": download_id,
                 "duration": duration,
                 "title": video_title,
                 "message": "Download completed"
@@ -1179,6 +1555,13 @@ def start_video_playback(playlist_id):
                 "--loop",
                 "--no-video-title-show",
                 "--no-audio",
+                "--vout-filter=croppadd",
+                "--croppadd-croptop=0",
+                "--croppadd-cropbottom=0",
+                "--croppadd-cropleft=0",
+                "--croppadd-cropright=0",
+                "--width=1920",
+                "--height=1080",
                 video_path
             ]
         else:
@@ -1191,6 +1574,13 @@ def start_video_playback(playlist_id):
                 "--loop",
                 "--no-video-title-show",
                 "--no-audio",
+                "--vout-filter=croppadd",
+                "--croppadd-croptop=0",
+                "--croppadd-cropbottom=0",
+                "--croppadd-cropleft=0",
+                "--croppadd-cropright=0",
+                "--width=1920",
+                "--height=1080",
                 video_path
             ]
         

@@ -1,38 +1,52 @@
 #!/usr/bin/env python3
 """
-Pi Display Manager - REST API Entry Point
+Pi Display Manager - Flask Entry Point
 Main entry point that imports from service and controller layers.
+Lightweight REST API with Flask framework.
 """
 
 import signal
 import sys
 
-# Import service layer for initialization
-from service import (
-    setup_logging, ensure_directories, load_config, load_playlists_db, logger,
-    load_idle_config, start_idle_screen,
-    load_schedules_db, start_scheduler,
-)
+# Import Flask app
+from controllers.controller import app, initialize_app
 
-# Import controller for server execution
-from controller import run_server, signal_handler
+# Import service layer for configuration
+from services.service import config, logger, stop_scheduler, stop_slideshow
+
+
+def signal_handler(sig, frame):
+    """Handle shutdown signals"""
+    logger.info("\nReceived signal %d, shutting down...", sig)
+    stop_scheduler()
+    stop_slideshow()
+    logger.info("Pi Display Manager Flask service stopped")
+    sys.exit(0)
 
 
 if __name__ == "__main__":
+    # Register signal handlers
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
-
+    
     try:
-        setup_logging()
-        ensure_directories()
-        load_config()
-        load_playlists_db()
-        cfg = load_idle_config()
-        if cfg.get("enabled") and cfg.get("image_path"):
-            start_idle_screen()
-        load_schedules_db()
-        start_scheduler()
-        run_server()
+        # Initialize application
+        initialize_app()
+        
+        port = config.get("api_port", 80) if config else 80
+        
+        print("=" * 70)
+        print("🚀 Pi Display Manager - Flask Server")
+        print("=" * 70)
+        print(f"📡 API Server: http://localhost:{port}")
+        print("=" * 70)
+        
+        app.run(
+            host="0.0.0.0",
+            port=port,
+            threaded=True,
+            debug=False
+        )
     except Exception as e:
         if logger:
             logger.error("Fatal error: %s", str(e))

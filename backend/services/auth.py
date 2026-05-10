@@ -17,7 +17,8 @@ failed_attempts = {}
 # Load auth configuration
 def load_auth_config():
     """Load authentication configuration from auth.json"""
-    auth_file = Path(__file__).parent.parent / "auth.json"
+    # Auth file is in project root (parent of backend/)
+    auth_file = Path(__file__).parent.parent.parent / "auth.json"
     
     if not auth_file.exists():
         # Create default auth.json if not exists
@@ -167,18 +168,6 @@ def destroy_session(session_token):
     return False
 
 
-def cleanup_expired_sessions():
-    """Remove expired sessions (call periodically)"""
-    current_time = time.time()
-    expired = [token for token, session in active_sessions.items() 
-               if current_time > session['expires_at']]
-    
-    for token in expired:
-        del active_sessions[token]
-    
-    return len(expired)
-
-
 def authenticate_user(username, password):
     """
     Authenticate user and return session token if successful
@@ -198,36 +187,3 @@ def authenticate_user(username, password):
     else:
         record_failed_attempt(username)
         return False, "Invalid username or password"
-
-
-def require_auth(handler_method):
-    """Decorator for protecting API endpoints"""
-    def wrapper(self, *args, **kwargs):
-        # Get session token from cookie
-        cookie_header = self.headers.get('Cookie', '')
-        session_token = None
-        
-        for cookie in cookie_header.split(';'):
-            cookie = cookie.strip()
-            if cookie.startswith('session_token='):
-                session_token = cookie.split('=', 1)[1]
-                break
-        
-        # Validate session
-        user_info = validate_session(session_token)
-        
-        if not user_info:
-            self.send_response(401)
-            self.send_header('Content-Type', 'application/json')
-            self.end_headers()
-            response = json.dumps({'status': 'error', 'message': 'Unauthorized. Please login.'})
-            self.wfile.write(response.encode())
-            return
-        
-        # Attach user info to handler
-        self.current_user = user_info
-        
-        # Call the original handler
-        return handler_method(self, *args, **kwargs)
-    
-    return wrapper

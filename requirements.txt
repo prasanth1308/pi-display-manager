@@ -3,6 +3,8 @@
 # Python Version Required: 3.7+
 #
 # Python Packages (install via pip):
+# Using Flask (lightweight, no Rust compilation)
+Flask==2.3.0
 yt-dlp>=2023.3.4
 Pillow>=9.0.0
 

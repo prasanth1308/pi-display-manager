@@ -22,6 +22,9 @@ const EventListeners = {
     DOM.cancelPlaylistBtn.addEventListener("click", () =>
       PlaylistManager.hideCreateModal(),
     );
+    DOM.playlistTypeSelect.addEventListener("change", () =>
+      PlaylistManager.toggleDelayVisibility(),
+    );
 
     // Edit playlist controls
     document
