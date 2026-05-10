@@ -237,9 +237,7 @@ const ImageManager = {
   async toggleSkip(playlistId, filename, isCurrentlySkipped) {
     UI.showLoading();
 
-    const data = isCurrentlySkipped
-      ? await API.unskipImage(playlistId, filename)
-      : await API.skipImage(playlistId, filename);
+    const data = await API.skipImage(playlistId, filename, !isCurrentlySkipped);
 
     UI.hideLoading();
 

@@ -93,20 +93,20 @@ const API = {
         method: "DELETE",
       },
     ),
-  skipImage: (playlistId, filename) =>
+  skipImage: (playlistId, filename, skipStatus) =>
     API.call(
       `/playlists/${playlistId}/images/${encodeURIComponent(filename)}/skip`,
       {
-        method: "POST",
+        method: skipStatus ? "POST" : "DELETE",
       },
     ),
-  unskipImage: (playlistId, filename) =>
-    API.call(
-      `/playlists/${playlistId}/images/${encodeURIComponent(filename)}/skip`,
-      {
-        method: "DELETE",
-      },
-    ),
+
+  // PDF endpoints
+  uploadPDF: (playlistId, formData) =>
+    API.call(`/playlists/${playlistId}/upload-pdf`, {
+      method: "POST",
+      body: formData,
+    }),
 
   // Video endpoints
   getPlaylistVideos: (playlistId) =>

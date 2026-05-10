@@ -7,6 +7,7 @@
 Flask==2.3.0
 yt-dlp>=2023.3.4
 Pillow>=9.0.0
+pdf2image>=1.16.0
 
 # Standard library modules used:
 # - os, json, subprocess, signal, sys, logging
@@ -17,3 +18,4 @@ Pillow>=9.0.0
 # - fbi (framebuffer image viewer): sudo apt-get install fbi
 # - vlc (video player): sudo apt-get install vlc
 # - python3-pip: sudo apt-get install python3-pip
+# - poppler-utils (for PDF conversion): sudo apt-get install poppler-utils

@@ -15,6 +15,8 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 import yt_dlp
+from pdf2image import convert_from_bytes
+from PIL import Image
 
 # Global state
 slideshow_process = None
@@ -469,6 +471,7 @@ def get_playlist_images(playlist_id):
     """Get list of image files from a playlist folder (excluding skipped images)"""
     playlist_dir = PLAYLISTS_DIR / playlist_id
     if not playlist_dir.exists():
+        logger.warning("Playlist directory does not exist: %s", playlist_dir)
         return []
     
     # Get metadata to check skipped images
@@ -480,6 +483,8 @@ def get_playlist_images(playlist_id):
         str(f) for f in playlist_dir.iterdir()
         if f.suffix.lower() in image_extensions and f.is_file() and f.name not in skipped_images
     ])
+    
+    logger.debug("Found %d images in playlist %s", len(images), playlist_id)
     return images
 
 
@@ -737,7 +742,7 @@ def list_playlists():
             "id": playlist_id,
             "name": info["name"],
             "type": plist_type,
-            "image_count": item_count if plist_type == "image" else 0,
+            "image_count": item_count if plist_type in ("image", "pdf") else 0,
             "video_count": item_count if plist_type == "video" else 0,
             "created": info.get("created", ""),
             "delay": info.get("delay", 5),
@@ -770,8 +775,42 @@ def upload_image(playlist_id, file_data, filename):
         counter += 1
     
     try:
+        # First save the uploaded file temporarily
         with open(file_path, 'wb') as f:
             f.write(file_data)
+        
+        # Optimize image size for memory efficiency
+        try:
+            from PIL import Image as PILImage
+            img = PILImage.open(file_path)
+            
+            # Maximum dimensions for memory efficiency (Full HD resolution)
+            max_width = 1920
+            max_height = 1080
+            
+            # Resize if image is too large
+            if img.width > max_width or img.height > max_height:
+                original_size = (img.width, img.height)
+                img.thumbnail((max_width, max_height), PILImage.Resampling.LANCZOS)
+                
+                # Save the resized image
+                if file_ext.lower() in {'.jpg', '.jpeg'}:
+                    img.save(file_path, 'JPEG', quality=85, optimize=True)
+                elif file_ext.lower() == '.png':
+                    img.save(file_path, 'PNG', optimize=True)
+                else:
+                    img.save(file_path)
+                
+                logger.info("Resized image from %dx%d to %dx%d: %s", 
+                           original_size[0], original_size[1], 
+                           img.width, img.height, file_path.name)
+            img.close()
+        except Exception as resize_err:
+            # If resize fails, keep the original file
+            logger.warning("Could not optimize image size: %s", resize_err)
+        
+        # Set file permissions
+        file_path.chmod(0o644)
         
         # Update image count
         playlists_db["playlists"][playlist_id]["image_count"] = len(get_playlist_images(playlist_id))
@@ -782,6 +821,71 @@ def upload_image(playlist_id, file_data, filename):
     except Exception as e:
         logger.error("Failed to upload image: %s", e)
         return {"status": "error", "message": str(e)}
+
+
+def convert_pdf_to_images(playlist_id, file_data, filename):
+    """Convert PDF pages to images and save to playlist"""
+    if playlist_id not in playlists_db["playlists"]:
+        return {"status": "error", "message": "Playlist not found"}
+    
+    logger.info("[PDF] Converting PDF to images: %s for playlist %s", filename, playlist_id)
+    
+    try:
+        # Convert PDF bytes to images
+        # DPI 150 provides good quality with lower memory usage (optimized for 1920x1080 displays)
+        images = convert_from_bytes(file_data, dpi=150, fmt='jpeg')
+        
+        playlist_dir = PLAYLISTS_DIR / playlist_id
+        pdf_name = Path(filename).stem  # Get filename without extension
+        
+        saved_images = []
+        
+        # Maximum dimensions for memory efficiency (Full HD resolution)
+        max_width = 1920
+        max_height = 1080
+        
+        # Save each page as a separate image
+        for page_num, image in enumerate(images, start=1):
+            # Resize image if too large (memory optimization)
+            if image.width > max_width or image.height > max_height:
+                image.thumbnail((max_width, max_height), Image.Resampling.LANCZOS)
+                logger.info("[PDF] Resized page %d from original size to %dx%d", 
+                           page_num, image.width, image.height)
+            
+            # Generate filename: originalname_page_001.jpg
+            image_filename = f"{pdf_name}_page_{page_num:03d}.jpg"
+            image_path = playlist_dir / image_filename
+            
+            # Handle duplicate names
+            counter = 1
+            while image_path.exists():
+                image_filename = f"{pdf_name}_page_{page_num:03d}_{counter}.jpg"
+                image_path = playlist_dir / image_filename
+                counter += 1
+            
+            # Save the image with optimization
+            image.save(image_path, 'JPEG', quality=85, optimize=True)
+            image_path.chmod(0o644)
+            saved_images.append(image_filename)
+            
+            logger.info("[PDF] Saved page %d as %s", page_num, image_filename)
+        
+        # Update image count
+        playlists_db["playlists"][playlist_id]["image_count"] = len(get_playlist_images(playlist_id))
+        save_playlists_db()
+        
+        logger.info("[PDF] Successfully converted PDF %s to %d images", filename, len(images))
+        
+        return {
+            "status": "success",
+            "message": f"PDF converted to {len(images)} image(s)",
+            "page_count": len(images),
+            "images": saved_images
+        }
+        
+    except Exception as e:
+        logger.error("[PDF] Failed to convert PDF: %s", e)
+        return {"status": "error", "message": f"Failed to convert PDF: {str(e)}"}
 
 
 

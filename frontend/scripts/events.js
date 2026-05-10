@@ -35,7 +35,18 @@ const EventListeners = {
       .addEventListener("click", () => PlaylistManager.hideEditModal());
 
     // Content controls
-    DOM.uploadImageBtn.addEventListener("click", () => DOM.fileInput.click());
+    DOM.uploadImageBtn.addEventListener("click", () => {
+      // Set file accept type based on playlist type
+      const playlistType = AppState.selectedPlaylistType;
+      if (playlistType === CONTENT_TYPES.PDF) {
+        DOM.fileInput.accept = ".pdf";
+      } else if (playlistType === CONTENT_TYPES.VIDEO) {
+        DOM.fileInput.accept = ".mp4,.avi,.mkv,.mov,.wmv,.flv,.webm";
+      } else {
+        DOM.fileInput.accept = "image/*";
+      }
+      DOM.fileInput.click();
+    });
     DOM.downloadVideoTriggerBtn.addEventListener("click", () =>
       VideoManager.showDownloadModal(),
     );
@@ -50,7 +61,16 @@ const EventListeners = {
     );
 
     // File upload
-    DOM.fileInput.addEventListener("change", (e) => ImageManager.upload(e));
+    DOM.fileInput.addEventListener("change", (e) => {
+      const playlistType = AppState.selectedPlaylistType;
+      if (playlistType === CONTENT_TYPES.PDF) {
+        PDFManager.upload(e);
+      } else if (playlistType === CONTENT_TYPES.VIDEO) {
+        ImageManager.upload(e); // Video upload uses ImageManager
+      } else {
+        ImageManager.upload(e);
+      }
+    });
 
     // Modal interactions
     DOM.playlistModal.addEventListener("click", (e) => {
