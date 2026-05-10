@@ -542,6 +542,7 @@ def start_slideshow(playlist_id=None):
             "--noverbose",
             "-d", framebuffer,
             "-T", "1",
+            "-u",           # Disable input from stdin (prevents early exit)
         ] + images
 
         # Log complete FBI command for debugging
@@ -577,7 +578,11 @@ def start_slideshow(playlist_id=None):
             exit_code = slideshow_process.returncode
             logger.error("FBI process exited immediately with code: %d", exit_code)
             
-            error_msg = f"FBI failed to start (exit code: {exit_code})"
+            if exit_code == 0:
+                error_msg = "FBI exited successfully but should stay running. Check if images exist and framebuffer is accessible."
+            else:
+                error_msg = f"FBI failed to start (exit code: {exit_code})"
+            
             try:
                 with open(fbi_log, "r") as f:
                     log_content = f.read()
@@ -586,10 +591,10 @@ def start_slideshow(playlist_id=None):
                     
                     # Include helpful error hints
                     if "Permission denied" in log_content:
-                        error_msg += " - Permission denied. Try running with sudo or check framebuffer permissions."
+                        error_msg += " - Permission denied. Try running with sudo."
                     elif "cannot open" in log_content or "No such file" in log_content:
                         error_msg += " - Cannot open framebuffer or image files."
-                    elif exit_code == 1:
+                    elif exit_code != 0:
                         error_msg += " - Check fbi_error.log for details."
             except Exception as e:
                 logger.warning("Could not read FBI log: %s", e)
