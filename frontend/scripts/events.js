@@ -40,6 +40,8 @@ const EventListeners = {
       const playlistType = AppState.selectedPlaylistType;
       if (playlistType === CONTENT_TYPES.PDF) {
         DOM.fileInput.accept = ".pdf";
+      } else if (playlistType === CONTENT_TYPES.PPT) {
+        DOM.fileInput.accept = ".ppt,.pptx";
       } else if (playlistType === CONTENT_TYPES.VIDEO) {
         DOM.fileInput.accept = ".mp4,.avi,.mkv,.mov,.wmv,.flv,.webm";
       } else {
@@ -65,6 +67,8 @@ const EventListeners = {
       const playlistType = AppState.selectedPlaylistType;
       if (playlistType === CONTENT_TYPES.PDF) {
         PDFManager.upload(e);
+      } else if (playlistType === CONTENT_TYPES.PPT) {
+        PPTManager.upload(e);
       } else if (playlistType === CONTENT_TYPES.VIDEO) {
         ImageManager.upload(e); // Video upload uses ImageManager
       } else {

@@ -108,6 +108,13 @@ const API = {
       body: formData,
     }),
 
+  // PowerPoint endpoints
+  uploadPPT: (playlistId, formData) =>
+    API.call(`/playlists/${playlistId}/upload-ppt`, {
+      method: "POST",
+      body: formData,
+    }),
+
   // Video endpoints
   getPlaylistVideos: (playlistId) =>
     API.call(`/playlists/${playlistId}/videos`),
