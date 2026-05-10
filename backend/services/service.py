@@ -480,7 +480,7 @@ def get_playlist_images(playlist_id):
     
     image_extensions = {".jpg", ".jpeg", ".png", ".bmp", ".gif"}
     images = sorted([
-        str(f.resolve()) for f in playlist_dir.iterdir()
+        str(f) for f in playlist_dir.iterdir()
         if f.suffix.lower() in image_extensions and f.is_file() and f.name not in skipped_images
     ])
     
@@ -561,9 +561,7 @@ def start_slideshow(playlist_id=None):
                 stdout=f,
                 stderr=f,
                 env=env
-            )
-
-        
+            )        
         
         current_playlist = playlist_id
         playlists_db["active_playlist"] = playlist_id
