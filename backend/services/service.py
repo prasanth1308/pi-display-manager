@@ -535,7 +535,9 @@ def start_slideshow(playlist_id=None):
         cmd = [
             "fbi",
             "-t", str(delay),
-            "-a",
+            "-a",               # Autoscale images to fit screen
+            "--autozoom",       # Enable autozoom for better memory efficiency
+            "--readahead", "1", # Only preload 1 image (reduces RAM usage)
             "--noverbose",
             "-d", framebuffer,
             "-T", "1",
@@ -772,8 +774,42 @@ def upload_image(playlist_id, file_data, filename):
         counter += 1
     
     try:
+        # First save the uploaded file temporarily
         with open(file_path, 'wb') as f:
             f.write(file_data)
+        
+        # Optimize image size for memory efficiency
+        try:
+            from PIL import Image as PILImage
+            img = PILImage.open(file_path)
+            
+            # Maximum dimensions for memory efficiency (Full HD resolution)
+            max_width = 1920
+            max_height = 1080
+            
+            # Resize if image is too large
+            if img.width > max_width or img.height > max_height:
+                original_size = (img.width, img.height)
+                img.thumbnail((max_width, max_height), PILImage.Resampling.LANCZOS)
+                
+                # Save the resized image
+                if file_ext.lower() in {'.jpg', '.jpeg'}:
+                    img.save(file_path, 'JPEG', quality=85, optimize=True)
+                elif file_ext.lower() == '.png':
+                    img.save(file_path, 'PNG', optimize=True)
+                else:
+                    img.save(file_path)
+                
+                logger.info("Resized image from %dx%d to %dx%d: %s", 
+                           original_size[0], original_size[1], 
+                           img.width, img.height, file_path.name)
+            img.close()
+        except Exception as resize_err:
+            # If resize fails, keep the original file
+            logger.warning("Could not optimize image size: %s", resize_err)
+        
+        # Set file permissions
+        file_path.chmod(0o644)
         
         # Update image count
         playlists_db["playlists"][playlist_id]["image_count"] = len(get_playlist_images(playlist_id))
@@ -795,16 +831,26 @@ def convert_pdf_to_images(playlist_id, file_data, filename):
     
     try:
         # Convert PDF bytes to images
-        # DPI 200 provides good quality without being too large
-        images = convert_from_bytes(file_data, dpi=200, fmt='jpeg')
+        # DPI 150 provides good quality with lower memory usage (optimized for 1920x1080 displays)
+        images = convert_from_bytes(file_data, dpi=150, fmt='jpeg')
         
         playlist_dir = PLAYLISTS_DIR / playlist_id
         pdf_name = Path(filename).stem  # Get filename without extension
         
         saved_images = []
         
+        # Maximum dimensions for memory efficiency (Full HD resolution)
+        max_width = 1920
+        max_height = 1080
+        
         # Save each page as a separate image
         for page_num, image in enumerate(images, start=1):
+            # Resize image if too large (memory optimization)
+            if image.width > max_width or image.height > max_height:
+                image.thumbnail((max_width, max_height), Image.Resampling.LANCZOS)
+                logger.info("[PDF] Resized page %d from original size to %dx%d", 
+                           page_num, image.width, image.height)
+            
             # Generate filename: originalname_page_001.jpg
             image_filename = f"{pdf_name}_page_{page_num:03d}.jpg"
             image_path = playlist_dir / image_filename
@@ -816,7 +862,7 @@ def convert_pdf_to_images(playlist_id, file_data, filename):
                 image_path = playlist_dir / image_filename
                 counter += 1
             
-            # Save the image
+            # Save the image with optimization
             image.save(image_path, 'JPEG', quality=85, optimize=True)
             image_path.chmod(0o644)
             saved_images.append(image_filename)
