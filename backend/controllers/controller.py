@@ -32,6 +32,7 @@ from services.service import (
     skip_image, unskip_image,
     parse_multipart_form_data, parse_multipart_form_data_streaming,
     download_youtube_video, downscale_video_to_1080p,
+    convert_pdf_to_images, convert_ppt_to_images,
     start_video_playback, stop_video_playback, get_playlist_videos, save_playlists_db,
     
     # Idle screen
@@ -342,6 +343,76 @@ def upload_content(user_info, playlist_id):
         else:
             result = upload_image(playlist_id, file_info['data'], filename)
             return jsonify(result)
+
+@app.route('/api/playlists/<playlist_id>/upload-pdf', methods=['POST'])
+@require_auth
+def upload_pdf(user_info, playlist_id):
+    """Upload PDF and convert pages to images"""
+    # Check if playlist exists
+    if playlist_id not in service.playlists_db["playlists"]:
+        return jsonify({"status": "error", "message": "Playlist not found"}), 404
+    
+    # Get content type and length
+    content_type = request.content_type
+    
+    if not content_type or 'multipart/form-data' not in content_type:
+        return jsonify({"status": "error", "message": "Content must be multipart/form-data"}), 400
+    
+    # Parse multipart data
+    body = request.get_data()
+    file_info = parse_multipart_form_data(content_type, body, "pdf")
+    
+    if not file_info or not file_info.get('filename') or not file_info.get('data'):
+        return jsonify({"status": "error", "message": "No valid PDF file uploaded"}), 400
+    
+    filename = file_info['filename']
+    file_ext = Path(filename).suffix.lower()
+    
+    if file_ext != '.pdf':
+        return jsonify({"status": "error", "message": "Only PDF files are allowed"}), 400
+    
+    try:
+        # Convert PDF to images
+        result = convert_pdf_to_images(playlist_id, file_info['data'], filename)
+        return jsonify(result)
+    except Exception as e:
+        service.logger.error(f"[PDF] Error converting PDF: {e}")
+        return jsonify({"status": "error", "message": f"Failed to convert PDF: {str(e)}"}), 500
+
+@app.route('/api/playlists/<playlist_id>/upload-ppt', methods=['POST'])
+@require_auth
+def upload_ppt(user_info, playlist_id):
+    """Upload PowerPoint and convert slides to images"""
+    # Check if playlist exists
+    if playlist_id not in service.playlists_db["playlists"]:
+        return jsonify({"status": "error", "message": "Playlist not found"}), 404
+    
+    # Get content type and length
+    content_type = request.content_type
+    
+    if not content_type or 'multipart/form-data' not in content_type:
+        return jsonify({"status": "error", "message": "Content must be multipart/form-data"}), 400
+    
+    # Parse multipart data
+    body = request.get_data()
+    file_info = parse_multipart_form_data(content_type, body, "ppt")
+    
+    if not file_info or not file_info.get('filename') or not file_info.get('data'):
+        return jsonify({"status": "error", "message": "No valid PowerPoint file uploaded"}), 400
+    
+    filename = file_info['filename']
+    file_ext = Path(filename).suffix.lower()
+    
+    if file_ext not in ['.ppt', '.pptx']:
+        return jsonify({"status": "error", "message": "Only PowerPoint files (.ppt, .pptx) are allowed"}), 400
+    
+    try:
+        # Convert PowerPoint to images
+        result = convert_ppt_to_images(playlist_id, file_info['data'], filename)
+        return jsonify(result)
+    except Exception as e:
+        service.logger.error(f"[PPT] Error converting PowerPoint: {e}")
+        return jsonify({"status": "error", "message": f"Failed to convert PowerPoint: {str(e)}"}), 500
 
 @app.route('/api/playlists/<playlist_id>/download', methods=['POST'])
 @require_auth

@@ -78,6 +78,11 @@ const UI = {
       DOM.uploadImageBtn.textContent = "📤 Upload Video";
       DOM.downloadVideoTriggerBtn.style.display = "inline-flex";
       DOM.videoUploadNote.style.display = "block";
+    } else if (playlistType === CONTENT_TYPES.PDF) {
+      DOM.uploadImageBtn.style.display = "inline-flex";
+      DOM.uploadImageBtn.textContent = "📤 Upload PDF";
+      DOM.downloadVideoTriggerBtn.style.display = "none";
+      DOM.videoUploadNote.style.display = "none";
     } else {
       DOM.uploadImageBtn.style.display = "inline-flex";
       DOM.uploadImageBtn.textContent = "📤 Upload Images";

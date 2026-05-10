@@ -15,6 +15,10 @@ const ContentManager = {
 
     if (playlistType === CONTENT_TYPES.VIDEO) {
       await VideoManager.load(playlistId);
+    } else if (playlistType === CONTENT_TYPES.PDF) {
+      await PDFManager.load(playlistId);
+    } else if (playlistType === CONTENT_TYPES.PPT) {
+      await PPTManager.load(playlistId);
     } else {
       await ImageManager.load(playlistId);
     }

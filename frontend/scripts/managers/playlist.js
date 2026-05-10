@@ -57,16 +57,25 @@ const PlaylistManager = {
     if (playlist.is_active)
       badges.push('<span class="mini-badge active">✓ Active</span>');
 
-    const isVideo = playlist.type === CONTENT_TYPES.VIDEO;
-    const config = PLAYLIST_TYPE_CONFIG[playlist.type || CONTENT_TYPES.IMAGE];
-    const contentCount = isVideo
-      ? playlist.video_count || 0
-      : playlist.image_count || 0;
-    const contentLabel = isVideo
-      ? `${contentCount} video${contentCount !== 1 ? "s" : ""}`
-      : `${contentCount} image${contentCount !== 1 ? "s" : ""}`;
+    const playlistType = playlist.type || CONTENT_TYPES.IMAGE;
+    const isVideo = playlistType === CONTENT_TYPES.VIDEO;
+    const isPDF = playlistType === CONTENT_TYPES.PDF;
+    const config = PLAYLIST_TYPE_CONFIG[playlistType];
 
-    const typeBadge = `<span class="type-badge ${playlist.type || "image"}">${config.badge}</span>`;
+    let contentCount, contentLabel;
+    if (isVideo) {
+      contentCount = playlist.video_count || 0;
+      contentLabel = `${contentCount} video${contentCount !== 1 ? "s" : ""}`;
+    } else {
+      contentCount = playlist.image_count || 0;
+      if (isPDF) {
+        contentLabel = `${contentCount} page${contentCount !== 1 ? "s" : ""}`;
+      } else {
+        contentLabel = `${contentCount} image${contentCount !== 1 ? "s" : ""}`;
+      }
+    }
+
+    const typeBadge = `<span class="type-badge ${playlistType}">${config.badge}</span>`;
 
     card.innerHTML = `
       <div class="playlist-header">
