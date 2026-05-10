@@ -42,19 +42,6 @@ from services.service import (
     update_schedule, delete_schedule, stop_scheduler, start_scheduler,
 )
 
-# Access state variables from service module to get updated values
-playlists_db = None
-download_status = None
-downscale_status = None
-slideshow_process = None
-video_process = None
-STATIC_DIR = None
-IDLE_DIR = None
-PLAYLISTS_DIR = None
-DATA_DIR = None
-VIDEOS_DIR = None
-config = None
-
 # ═══════════════════════════════════════════════════════════════════════════
 # Initialize Flask App
 # ═══════════════════════════════════════════════════════════════════════════
@@ -208,11 +195,11 @@ def get_videos(user_info, playlist_id):
 def upload_content(user_info, playlist_id):
     """Upload image or video to playlist"""
     # Check if playlist exists
-    if playlist_id not in playlists_db["playlists"]:
+    if playlist_id not in service.playlists_db["playlists"]:
         return jsonify({"status": "error", "message": "Playlist not found"}), 404
     
     # Check for existing videos in video playlists
-    playlist_type = playlists_db["playlists"][playlist_id].get("type", "image")
+    playlist_type = service.playlists_db["playlists"][playlist_id].get("type", "image")
     if playlist_type == "video":
         existing_videos = get_playlist_videos(playlist_id)
         if existing_videos:
@@ -267,7 +254,7 @@ def upload_content(user_info, playlist_id):
                 
                 # Update database
                 videos = get_playlist_videos(playlist_id)
-                playlists_db["playlists"][playlist_id]["video_count"] = len(videos)
+                service.playlists_db["playlists"][playlist_id]["video_count"] = len(videos)
                 save_playlists_db()
                 
                 # Start background downscaling
@@ -326,7 +313,7 @@ def upload_content(user_info, playlist_id):
             
             # Update database
             videos = get_playlist_videos(playlist_id)
-            playlists_db["playlists"][playlist_id]["video_count"] = len(videos)
+            service.playlists_db["playlists"][playlist_id]["video_count"] = len(videos)
             save_playlists_db()
             
             # Background downscaling
@@ -418,8 +405,8 @@ def start_playback(user_info):
     """Start slideshow or video playback"""
     playlist_id = request.args.get('playlist')
     
-    if playlist_id and playlist_id in playlists_db["playlists"]:
-        plist_type = playlists_db["playlists"][playlist_id].get("type", "image")
+    if playlist_id and playlist_id in service.playlists_db["playlists"]:
+        plist_type = service.playlists_db["playlists"][playlist_id].get("type", "image")
         if plist_type == "video":
             return jsonify(start_video_playback(playlist_id))
         else:
@@ -434,11 +421,11 @@ def stop_playback(user_info):
     video_stopped = False
     slideshow_stopped = False
     
-    if video_process is not None:
+    if service.video_process is not None:
         response = stop_video_playback()
         video_stopped = True
     
-    if slideshow_process is not None:
+    if service.slideshow_process is not None:
         response = stop_slideshow()
         slideshow_stopped = True
     
@@ -469,16 +456,16 @@ def clear_display(user_info):
 @require_auth
 def get_download_status(user_info, download_id):
     """Get download progress status"""
-    if download_id in download_status:
-        return jsonify(download_status[download_id])
+    if download_id in service.download_status:
+        return jsonify(service.download_status[download_id])
     return jsonify({"status": "error", "message": "Download not found"}), 404
 
 @app.route('/api/downscale/<downscale_id>', methods=['GET'])
 @require_auth
 def get_downscale_status(user_info, downscale_id):
     """Get downscale progress status"""
-    if downscale_id in downscale_status:
-        return jsonify(downscale_status[downscale_id])
+    if downscale_id in service.downscale_status:
+        return jsonify(service.downscale_status[downscale_id])
     return jsonify({"status": "error", "message": "Downscale not found"}), 404
 
 # ═══════════════════════════════════════════════════════════════════════════
