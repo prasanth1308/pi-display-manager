@@ -538,7 +538,6 @@ def start_slideshow(playlist_id=None):
         cmd = [
             "fbi",
             "-t", str(delay),
-            "-a",               # Autoscale images to fit screen
             "--noverbose",
             "-d", framebuffer,
             "-T", "1",
