@@ -12,10 +12,11 @@ import shutil
 import threading
 import time
 import uuid
+import tempfile
 from datetime import datetime
 from pathlib import Path
 import yt_dlp
-from pdf2image import convert_from_bytes
+from pdf2image import convert_from_bytes, convert_from_path
 from PIL import Image
 
 # Global state
@@ -742,7 +743,7 @@ def list_playlists():
             "id": playlist_id,
             "name": info["name"],
             "type": plist_type,
-            "image_count": item_count if plist_type in ("image", "pdf") else 0,
+            "image_count": item_count if plist_type in ("image", "pdf", "ppt") else 0,
             "video_count": item_count if plist_type == "video" else 0,
             "created": info.get("created", ""),
             "delay": info.get("delay", 5),
@@ -887,6 +888,134 @@ def convert_pdf_to_images(playlist_id, file_data, filename):
         logger.error("[PDF] Failed to convert PDF: %s", e)
         return {"status": "error", "message": f"Failed to convert PDF: {str(e)}"}
 
+
+def convert_ppt_to_images(playlist_id, file_data, filename):
+    """Convert PowerPoint slides to images and save to playlist"""
+    if playlist_id not in playlists_db["playlists"]:
+        return {"status": "error", "message": "Playlist not found"}
+    
+    logger.info("[PPT] Converting PowerPoint to images: %s for playlist %s", filename, playlist_id)
+    
+    temp_dir = None
+    try:
+        # Create temporary directory for conversion
+        temp_dir = tempfile.mkdtemp(prefix="ppt_convert_")
+        temp_ppt_path = Path(temp_dir) / filename
+        temp_pdf_path = Path(temp_dir) / f"{Path(filename).stem}.pdf"
+        
+        # Save PPT file temporarily
+        with open(temp_ppt_path, 'wb') as f:
+            f.write(file_data)
+        logger.info("[PPT] Saved temporary PPT file: %s", temp_ppt_path)
+        
+        # Convert PPT to PDF using LibreOffice
+        logger.info("[PPT] Converting PPT to PDF using LibreOffice...")
+        try:
+            # Use LibreOffice in headless mode to convert to PDF
+            # --headless: run without GUI
+            # --convert-to pdf: output format
+            # --outdir: output directory
+            result = subprocess.run(
+                [
+                    "soffice",
+                    "--headless",
+                    "--convert-to", "pdf",
+                    "--outdir", temp_dir,
+                    str(temp_ppt_path)
+                ],
+                capture_output=True,
+                text=True,
+                timeout=120  # 2 minutes timeout
+            )
+            
+            if result.returncode != 0:
+                logger.error("[PPT] LibreOffice conversion failed: %s", result.stderr)
+                return {
+                    "status": "error",
+                    "message": "Failed to convert PPT. Ensure LibreOffice is installed (sudo apt-get install libreoffice)"
+                }
+            
+            if not temp_pdf_path.exists():
+                logger.error("[PPT] PDF file not created after conversion")
+                return {"status": "error", "message": "PPT to PDF conversion failed"}
+            
+            logger.info("[PPT] Successfully converted PPT to PDF: %s", temp_pdf_path)
+            
+        except FileNotFoundError:
+            logger.error("[PPT] LibreOffice (soffice) not found")
+            return {
+                "status": "error",
+                "message": "LibreOffice not installed. Install with: sudo apt-get install libreoffice"
+            }
+        except subprocess.TimeoutExpired:
+            logger.error("[PPT] LibreOffice conversion timeout")
+            return {"status": "error", "message": "PPT conversion timed out (file too large or complex)"}
+        
+        # Convert PDF to images using pdf2image (reuse existing logic)
+        logger.info("[PPT] Converting PDF to images...")
+        # DPI 150 provides good quality with lower memory usage
+        images = convert_from_path(str(temp_pdf_path), dpi=150, fmt='jpeg')
+        
+        playlist_dir = PLAYLISTS_DIR / playlist_id
+        ppt_name = Path(filename).stem  # Get filename without extension
+        
+        saved_images = []
+        
+        # Maximum dimensions for memory efficiency (Full HD resolution)
+        max_width = 1920
+        max_height = 1080
+        
+        # Save each slide as a separate image
+        for slide_num, image in enumerate(images, start=1):
+            # Resize image if too large (memory optimization)
+            if image.width > max_width or image.height > max_height:
+                image.thumbnail((max_width, max_height), Image.Resampling.LANCZOS)
+                logger.info("[PPT] Resized slide %d from original size to %dx%d", 
+                           slide_num, image.width, image.height)
+            
+            # Generate filename: originalname_slide_001.jpg
+            image_filename = f"{ppt_name}_slide_{slide_num:03d}.jpg"
+            image_path = playlist_dir / image_filename
+            
+            # Handle duplicate names
+            counter = 1
+            while image_path.exists():
+                image_filename = f"{ppt_name}_slide_{slide_num:03d}_{counter}.jpg"
+                image_path = playlist_dir / image_filename
+                counter += 1
+            
+            # Save the image with optimization
+            image.save(image_path, 'JPEG', quality=85, optimize=True)
+            image_path.chmod(0o644)
+            saved_images.append(image_filename)
+            
+            logger.info("[PPT] Saved slide %d as %s", slide_num, image_filename)
+        
+        # Update image count
+        playlists_db["playlists"][playlist_id]["image_count"] = len(get_playlist_images(playlist_id))
+        save_playlists_db()
+        
+        logger.info("[PPT] Successfully converted PPT %s to %d images", filename, len(images))
+        
+        return {
+            "status": "success",
+            "message": f"PowerPoint converted to {len(images)} slide(s)",
+            "slide_count": len(images),
+            "images": saved_images
+        }
+        
+    except Exception as e:
+        logger.error("[PPT] Failed to convert PowerPoint: %s", e)
+        return {"status": "error", "message": f"Failed to convert PowerPoint: {str(e)}"}
+    
+    finally:
+        # Clean up temporary directory
+        if temp_dir and Path(temp_dir).exists():
+            try:
+                shutil.rmtree(temp_dir)
+                logger.info("[PPT] Cleaned up temporary directory")
+            except Exception as e:
+                logger.warning("[PPT] Failed to clean up temp directory: %s", e)
 
 
 def skip_image(playlist_id, filename):

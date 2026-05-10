@@ -19,3 +19,4 @@ pdf2image>=1.16.0
 # - vlc (video player): sudo apt-get install vlc
 # - python3-pip: sudo apt-get install python3-pip
 # - poppler-utils (for PDF conversion): sudo apt-get install poppler-utils
+# - libreoffice (for PowerPoint conversion): sudo apt-get install libreoffice

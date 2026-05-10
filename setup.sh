@@ -14,24 +14,35 @@ if ! grep -q "Raspberry Pi" /proc/device-tree/model 2>/dev/null; then
 fi
 
 # Update package list
-echo "[1/8] Updating package list..."
+echo "[1/10] Updating package list..."
 sudo apt-get update
 
 # Install fbi package
-echo "[2/8] Installing fbi (framebuffer image viewer)..."
+echo "[2/10] Installing fbi (framebuffer image viewer)..."
 sudo apt-get install -y fbi
 
 # Install VLC for video playback
-echo "[3/8] Installing VLC media player..."
+echo "[3/10] Installing VLC media player..."
 sudo apt-get install -y vlc
 
 # Install ffmpeg for video processing
-echo "[4/8] Installing ffmpeg (includes ffprobe)..."
+echo "[4/10] Installing ffmpeg (includes ffprobe)..."
 sudo apt-get install -y ffmpeg
 echo "ffmpeg installed: $(ffmpeg -version | head -n 1)"
 
+# Install poppler-utils for PDF conversion
+echo "[5/10] Installing poppler-utils (for PDF conversion)..."
+sudo apt-get install -y poppler-utils
+echo "poppler-utils installed successfully"
+
+# Install LibreOffice for PowerPoint conversion
+echo "[6/10] Installing LibreOffice (for PowerPoint conversion)..."
+echo "Note: This may take several minutes..."
+sudo apt-get install -y libreoffice --no-install-recommends
+echo "LibreOffice installed: $(soffice --version 2>/dev/null || echo 'version check failed')"
+
 # Install Python3 and pip
-echo "[5/8] Checking Python3 and pip..."
+echo "[7/10] Checking Python3 and pip..."
 if ! command -v python3 &> /dev/null; then
     echo "Installing Python3..."
     sudo apt-get install -y python3
@@ -48,7 +59,7 @@ else
 fi
 
 # Set up directory structure (moved before venv creation)
-echo "[6/8] Setting up directory structure..."
+echo "[8/10] Setting up directory structure..."
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Create data directories
@@ -64,7 +75,7 @@ echo "  - $SCRIPT_DIR/data/uploads"
 echo "  - $SCRIPT_DIR/frontend"
 
 # Create virtual environment
-echo "[7/8] Creating Python virtual environment..."
+echo "[9/10] Creating Python virtual environment..."
 if [ ! -d "$SCRIPT_DIR/venv" ]; then
     python3 -m venv "$SCRIPT_DIR/venv"
     echo "Virtual environment created at $SCRIPT_DIR/venv"
@@ -88,7 +99,7 @@ fi
 chmod +x "$SCRIPT_DIR/backend/slideshow_api.py"
 
 # Setup systemd service
-echo "[8/8] Setting up systemd service..."
+echo "[10/10] Setting up systemd service..."
 if [ -f "$SCRIPT_DIR/pi-slideshow.service" ]; then
     # Determine the actual installation path
     INSTALL_PATH="$SCRIPT_DIR"
