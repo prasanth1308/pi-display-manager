@@ -742,7 +742,7 @@ def list_playlists():
             "id": playlist_id,
             "name": info["name"],
             "type": plist_type,
-            "image_count": item_count if plist_type == "image" else 0,
+            "image_count": item_count if plist_type in ("image", "pdf") else 0,
             "video_count": item_count if plist_type == "video" else 0,
             "created": info.get("created", ""),
             "delay": info.get("delay", 5),
