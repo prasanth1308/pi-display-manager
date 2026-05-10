@@ -16,15 +16,13 @@ sys.path.insert(0, str(_Path(__file__).parent.parent))
 
 from services.auth import authenticate_user, validate_session, destroy_session
 
-# Import service layer
+# Import service layer module
+import services.service as service
+
+# Import service functions directly
 from services.service import (
     # Core functions
     setup_logging, ensure_directories, load_config, load_playlists_db,
-    
-    # State variables
-    logger, config, playlists_db, download_status, downscale_status,
-    slideshow_process, video_process, STATIC_DIR, IDLE_DIR, PLAYLISTS_DIR,
-    DATA_DIR, VIDEOS_DIR,
     
     # Service functions
     get_status, start_slideshow, stop_slideshow, clear_framebuffer,
@@ -44,11 +42,25 @@ from services.service import (
     update_schedule, delete_schedule, stop_scheduler, start_scheduler,
 )
 
+# Access state variables from service module to get updated values
+playlists_db = None
+download_status = None
+downscale_status = None
+slideshow_process = None
+video_process = None
+STATIC_DIR = None
+IDLE_DIR = None
+PLAYLISTS_DIR = None
+DATA_DIR = None
+VIDEOS_DIR = None
+config = None
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Initialize Flask App
 # ═══════════════════════════════════════════════════════════════════════════
 
-app = Flask(__name__, static_folder=str(STATIC_DIR))
+# Flask app will be configured after initialization
+app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024 * 1024  # 5GB max upload
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -578,19 +590,19 @@ def serve_index():
     user_info = validate_session(session_token)
     if not user_info:
         return redirect('/login.html')
-    return send_file(STATIC_DIR / "index.html")
+    return send_file(service.STATIC_DIR / "index.html")
 
 @app.route('/login.html')
 @app.route('/login')
 def serve_login():
     """Serve login page"""
-    return send_file(STATIC_DIR / "login.html")
+    return send_file(service.STATIC_DIR / "login.html")
 
 # Serve static files from frontend
 @app.route('/frontend/<path:filename>')
 def serve_static(filename):
     """Serve static frontend files"""
-    return send_file(STATIC_DIR / filename)
+    return send_file(service.STATIC_DIR / filename)
 
 # Serve data files (with authentication)
 @app.route('/data/idle/<filename>')
@@ -622,6 +634,9 @@ def initialize_app():
     load_config()
     load_playlists_db()
     
+    # Configure Flask static folder after service initialization
+    app.static_folder = str(service.STATIC_DIR)
+    
     # Load idle config
     cfg = get_idle_config()
     if cfg.get("enabled") and cfg.get("image_path"):
@@ -631,8 +646,8 @@ def initialize_app():
     load_schedules_db()
     start_scheduler()
     
-    logger.info("=== Pi Display Manager Flask Started ===")
-    logger.info("API running on http://localhost:%d", config.get("api_port", 8000))
+    service.logger.info("=== Pi Display Manager Flask Started ===")
+    service.logger.info("API running on http://localhost:%d", service.config.get("api_port", 8000))
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Main Entry Point
@@ -640,5 +655,5 @@ def initialize_app():
 
 if __name__ == "__main__":
     initialize_app()
-    port = config.get("api_port", 8000) if config else 8000
+    port = service.config.get("api_port", 8000) if service.config else 8000
     app.run(host="0.0.0.0", port=port, threaded=True, debug=False)
