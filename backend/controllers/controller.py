@@ -27,6 +27,7 @@ from services.service import (
     # Service functions
     get_status, start_slideshow, stop_slideshow, clear_framebuffer,
     list_playlists, create_playlist, update_playlist, delete_playlist,
+    set_default_playlist, clear_default_playlist, start_default_playlist,
     get_playlist_images_list, get_playlist_videos_list,
     upload_image, delete_image, delete_video,
     skip_image, unskip_image,
@@ -187,6 +188,18 @@ def update_existing_playlist(user_info, playlist_id):
 def delete_existing_playlist(user_info, playlist_id):
     """Delete a playlist"""
     return jsonify(delete_playlist(playlist_id))
+
+@app.route('/api/playlists/<playlist_id>/set-default', methods=['POST'])
+@require_auth
+def set_playlist_as_default(user_info, playlist_id):
+    """Mark a playlist as the default (auto-starts on boot)"""
+    return jsonify(set_default_playlist(playlist_id))
+
+@app.route('/api/playlists/<playlist_id>/set-default', methods=['DELETE'])
+@require_auth
+def unset_playlist_as_default(user_info, playlist_id):
+    """Remove the default playlist setting"""
+    return jsonify(clear_default_playlist())
 
 @app.route('/api/playlists/<playlist_id>/images', methods=['GET'])
 @require_auth
@@ -704,10 +717,11 @@ def initialize_app():
     # Configure Flask static folder after service initialization
     app.static_folder = str(service.STATIC_DIR)
     
-    # Load idle config
-    cfg = get_idle_config()
-    if cfg.get("enabled") and cfg.get("image_path"):
-        start_idle_screen()
+    # Auto-start default playlist if configured; otherwise start idle screen
+    if not start_default_playlist():
+        cfg = get_idle_config()
+        if cfg.get("enabled") and cfg.get("image_path"):
+            start_idle_screen()
     
     # Start scheduler
     load_schedules_db()

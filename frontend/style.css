@@ -331,6 +331,14 @@ header h1 {
     background: var(--primary-color);
 }
 
+.mini-badge.default {
+    background: #d97706;
+}
+
+.playlist-card.default {
+    border-color: #d97706;
+}
+
 /* Images Grid */
 .images-grid {
     display: grid;

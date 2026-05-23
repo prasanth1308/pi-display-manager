@@ -756,8 +756,47 @@ def delete_playlist(playlist_id):
     
     save_playlists_db()
     
+    if playlists_db.get("default_playlist") == playlist_id:
+        playlists_db["default_playlist"] = None
+        save_playlists_db()
+    
     logger.info("Deleted playlist: %s", playlist_id)
     return {"status": "success", "message": "Playlist deleted"}
+
+
+def set_default_playlist(playlist_id):
+    """Mark a playlist as the default (auto-starts on boot)."""
+    if playlist_id not in playlists_db.get("playlists", {}):
+        return {"status": "error", "message": "Playlist not found"}
+    playlists_db["default_playlist"] = playlist_id
+    save_playlists_db()
+    logger.info("Default playlist set: %s", playlist_id)
+    return {"status": "success", "message": "Default playlist set", "playlist_id": playlist_id}
+
+
+def clear_default_playlist():
+    """Clear the default playlist setting."""
+    playlists_db["default_playlist"] = None
+    save_playlists_db()
+    logger.info("Default playlist cleared")
+    return {"status": "success", "message": "Default playlist cleared"}
+
+
+def start_default_playlist():
+    """
+    Start the default playlist if one is configured.
+    Returns True if the slideshow was launched, False otherwise.
+    """
+    playlist_id = playlists_db.get("default_playlist")
+    if not playlist_id or playlist_id not in playlists_db.get("playlists", {}):
+        return False
+    result = start_slideshow(playlist_id)
+    started = result.get("status") == "started"
+    if started:
+        logger.info("Default playlist auto-started: %s", playlist_id)
+    else:
+        logger.warning("Default playlist failed to start: %s", result.get("message"))
+    return started
 
 
 def list_playlists():
@@ -782,7 +821,8 @@ def list_playlists():
             "created": info.get("created", ""),
             "delay": info.get("delay", 5),
             "is_active": playlists_db.get("active_playlist") == playlist_id,
-            "is_playing": current_playlist == playlist_id
+            "is_playing": current_playlist == playlist_id,
+            "is_default": playlists_db.get("default_playlist") == playlist_id
         })
     return playlists
 

@@ -41,6 +41,10 @@ const API = {
     }),
   deletePlaylist: (playlistId) =>
     API.call(`/playlists/${playlistId}`, { method: "DELETE" }),
+  setDefaultPlaylist: (playlistId) =>
+    API.call(`/playlists/${playlistId}/set-default`, { method: "POST" }),
+  clearDefaultPlaylist: (playlistId) =>
+    API.call(`/playlists/${playlistId}/set-default`, { method: "DELETE" }),
 
   // Image endpoints
   getPlaylistImages: (playlistId) =>
