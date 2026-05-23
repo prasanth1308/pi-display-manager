@@ -404,6 +404,36 @@ def _run_idle_loop(image_path, custom_text):
     logger.info("Idle screen thread stopped")
 
 
+def _hide_console_cursor():
+    """
+    Hide the blinking cursor on the active virtual console (Linux only).
+
+    When fbi runs it hides the cursor as a side-effect of taking over the VT.
+    When we write directly to the framebuffer that doesn't happen, so we do it
+    explicitly here to keep the display clean at startup.
+    """
+    if sys.platform != "linux":
+        return
+    # Try writing the ANSI 'cursor off' escape sequence directly to tty1.
+    for tty in ("/dev/tty1", "/dev/console"):
+        try:
+            with open(tty, "w") as t:
+                t.write("\033[?25l")
+            return
+        except Exception:
+            pass
+    # Fallback: setterm (needs stdin on the target TTY)
+    try:
+        subprocess.run(
+            ["setterm", "--cursor", "off"],
+            stdout=open("/dev/tty1", "w"),
+            stderr=subprocess.DEVNULL,
+            timeout=2,
+        )
+    except Exception:
+        pass
+
+
 def start_idle_screen():
     """Start the idle screen if configured and enabled."""
     global idle_thread, idle_stop_event
@@ -413,6 +443,10 @@ def start_idle_screen():
         return
 
     stop_idle_screen()  # ensure clean state
+
+    # Hide the VT cursor so it doesn't overlay the framebuffer image.
+    # fbi does this automatically; the direct-write path does not.
+    _hide_console_cursor()
 
     idle_stop_event.clear()
     idle_thread = threading.Thread(
