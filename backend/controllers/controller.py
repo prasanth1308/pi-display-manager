@@ -716,12 +716,24 @@ def initialize_app():
     
     # Configure Flask static folder after service initialization
     app.static_folder = str(service.STATIC_DIR)
-    
-    # Auto-start default playlist if configured; otherwise start idle screen
-    if not start_default_playlist():
-        cfg = get_idle_config()
-        if cfg.get("enabled") and cfg.get("image_path"):
-            start_idle_screen()
+
+    cfg = get_idle_config()
+    has_idle_screen = cfg.get("enabled") and cfg.get("image_path")
+    has_default_playlist = bool(service.playlists_db.get("default_playlist"))
+
+    if has_idle_screen:
+        start_idle_screen()
+
+    if has_default_playlist:
+        if has_idle_screen:
+            def delayed_default_start():
+                service.logger.info("Idle screen started; waiting 60 seconds before starting default playlist")
+                threading.Event().wait(60)
+                start_default_playlist()
+
+            threading.Thread(target=delayed_default_start, daemon=True, name="default-playlist-delay").start()
+        else:
+            start_default_playlist()
     
     # Start scheduler
     load_schedules_db()
