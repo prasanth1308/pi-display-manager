@@ -404,9 +404,6 @@ def _run_idle_loop(image_path, custom_text):
     logger.info("Idle screen thread stopped")
 
 
-def _hide_console_cursor():
-    clear_framebuffer()
-
 
 def start_idle_screen():
     """Start the idle screen if configured and enabled."""
@@ -418,9 +415,6 @@ def start_idle_screen():
 
     stop_idle_screen()  # ensure clean state
 
-    # Hide the VT cursor so it doesn't overlay the framebuffer image.
-    # fbi does this automatically; the direct-write path does not.
-    _hide_console_cursor()
 
     idle_stop_event.clear()
     idle_thread = threading.Thread(
