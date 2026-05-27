@@ -6,11 +6,6 @@ After=local-fs.target network.target
 Type=simple
 User=root
 WorkingDirectory=/home/larokiaraj/pi-display-manager
-# Stop getty@tty1 to hide terminal login prompt and blinking cursor
-ExecStartPre=/bin/systemctl stop getty@tty1
-# Hide cursor on tty1
-ExecStartPre=/bin/sh -c 'TERM=linux setterm -cursor off > /dev/tty1'
-ExecStartPre=/usr/bin/clear > /dev/tty1
 # Start the Flask API server with suppressed output
 ExecStart=/home/larokiaraj/pi-display-manager/venv/bin/python3 /home/larokiaraj/pi-display-manager/backend/slideshow_api.py
 Restart=always
