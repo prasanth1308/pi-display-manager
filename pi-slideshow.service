@@ -10,6 +10,7 @@ WorkingDirectory=/home/larokiaraj/pi-display-manager
 ExecStartPre=/bin/systemctl stop getty@tty1
 # Hide cursor on tty1
 ExecStartPre=/bin/sh -c 'TERM=linux setterm -cursor off > /dev/tty1'
+ExecStartPre=/usr/bin/clear > /dev/tty1
 # Start the Flask API server with suppressed output
 ExecStart=/home/larokiaraj/pi-display-manager/venv/bin/python3 /home/larokiaraj/pi-display-manager/backend/slideshow_api.py
 Restart=always
