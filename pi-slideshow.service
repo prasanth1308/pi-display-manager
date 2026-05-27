@@ -6,17 +6,16 @@ After=local-fs.target network.target
 Type=simple
 User=root
 WorkingDirectory=/home/larokiaraj/pi-display-manager
-# Hide terminal cursor and suppress all output on startup
-ExecStartPre=/bin/bash -c 'setterm -cursor off > /dev/null 2>&1 || true'
-ExecStartPre=/bin/bash -c 'echo 0 > /sys/class/graphics/fb0/cursor 2>/dev/null || true'
+# Stop getty@tty1 to hide terminal login prompt and blinking cursor
+ExecStartPre=/bin/systemctl stop getty@tty1
+# Hide cursor on tty1
+ExecStartPre=/bin/sh -c 'TERM=linux setterm -cursor off > /dev/tty1'
 # Start the Flask API server with suppressed output
 ExecStart=/home/larokiaraj/pi-display-manager/venv/bin/python3 /home/larokiaraj/pi-display-manager/backend/slideshow_api.py
 Restart=always
 RestartSec=5
-StandardOutput=null
-StandardError=null
-# Ensure we can write to framebuffer
-UMask=0000
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target

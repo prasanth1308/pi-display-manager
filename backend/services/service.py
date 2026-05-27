@@ -404,7 +404,6 @@ def _run_idle_loop(image_path, custom_text):
     logger.info("Idle screen thread stopped")
 
 
-
 def start_idle_screen():
     """Start the idle screen if configured and enabled."""
     global idle_thread, idle_stop_event
@@ -414,7 +413,6 @@ def start_idle_screen():
         return
 
     stop_idle_screen()  # ensure clean state
-
 
     idle_stop_event.clear()
     idle_thread = threading.Thread(
