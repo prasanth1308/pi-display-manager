@@ -1,15 +1,12 @@
 [Unit]
 Description=Pi Display Manager - Image Slideshow Service with Web Interface
 Wants=network-online.target
-After=local-fs.target network.target network-online.target systemd-user-sessions.service getty.target
-Conflicts=getty@tty1.service
-Before=getty@tty1.service
+After=network-online.target multi-user.target
 
 [Service]
 Type=simple
 User=root
 WorkingDirectory=/home/larokiaraj/pi-display-manager
-ExecStartPre=/bin/sleep 10
 ExecStartPre=/bin/systemctl stop getty@tty1.service
 ExecStartPre=/bin/systemctl mask --runtime getty@tty1.service
 ExecStartPre=/bin/sh -c 'TERM=linux setterm -cursor off > /dev/tty1 || true'
