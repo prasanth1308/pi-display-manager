@@ -6,6 +6,7 @@ After=local-fs.target network.target
 Type=simple
 User=root
 WorkingDirectory=/home/larokiaraj/pi-display-manager
+ExecStartPre=/bin/systemctl stop getty@tty1
 ExecStart=/home/larokiaraj/pi-display-manager/venv/bin/python3 /home/larokiaraj/pi-display-manager/backend/slideshow_api.py
 Restart=always
 RestartSec=5
