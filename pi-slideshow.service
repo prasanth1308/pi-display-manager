@@ -6,7 +6,6 @@ After=local-fs.target network.target
 Type=simple
 User=root
 WorkingDirectory=/home/larokiaraj/pi-display-manager
-# Start the Flask API server with suppressed output
 ExecStart=/home/larokiaraj/pi-display-manager/venv/bin/python3 /home/larokiaraj/pi-display-manager/backend/slideshow_api.py
 Restart=always
 RestartSec=5
