@@ -120,6 +120,24 @@ if [ -f "$SCRIPT_DIR/pi-slideshow.service" ]; then
     # Set framebuffer permissions
     sudo chmod 666 /dev/fb0
 
+    # Ensure kernel cursor is disabled on tty (idempotent)
+    CMDLINE_FILE="/boot/firmware/cmdline.txt"
+    if [ -f "$CMDLINE_FILE" ]; then
+        if grep -q "vt.global_cursor_default=" "$CMDLINE_FILE"; then
+            if grep -q "vt.global_cursor_default=1" "$CMDLINE_FILE"; then
+                sudo sed -i 's/vt\.global_cursor_default=1/vt.global_cursor_default=0/g' "$CMDLINE_FILE"
+                echo "Updated vt.global_cursor_default to 0 in $CMDLINE_FILE"
+            else
+                echo "vt.global_cursor_default already configured in $CMDLINE_FILE"
+            fi
+        else
+            sudo sed -i 's|$| vt.global_cursor_default=0|' "$CMDLINE_FILE"
+            echo "Added vt.global_cursor_default=0 to $CMDLINE_FILE"
+        fi
+    else
+        echo "Warning: $CMDLINE_FILE not found; skipping cursor kernel parameter"
+    fi
+
     # Start the service
     sudo systemctl start pi-slideshow.service
 
