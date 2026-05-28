@@ -26,6 +26,7 @@ ExecStartPre=/bin/sh -c 'timeout 3 bluetoothctl --timeout 5 discoverable on 2>/d
 ExecStartPre=/bin/sh -c 'timeout 3 bluetoothctl --timeout 5 pairable-timeout 0 2>/dev/null || true'
 ExecStartPre=/bin/sh -c 'timeout 3 bluetoothctl --timeout 5 discoverable-timeout 0 2>/dev/null || true'
 ExecStartPre=/bin/sh -c 'command -v btmgmt >/dev/null 2>&1 && timeout 3 btmgmt --index 0 io-cap 3 >/dev/null 2>&1 || true'
+ExecStartPre=/bin/sh -c 'command -v btmgmt >/dev/null 2>&1 && timeout 3 btmgmt --index 0 ssp on >/dev/null 2>&1 || true'
 ExecStartPre=/bin/sh -c 'command -v btmgmt >/dev/null 2>&1 && timeout 3 btmgmt --index 0 power on >/dev/null 2>&1 || true'
 ExecStartPre=/bin/sh -c 'command -v btmgmt >/dev/null 2>&1 && timeout 3 btmgmt --index 0 connectable on >/dev/null 2>&1 || true'
 ExecStartPre=/bin/sh -c 'command -v btmgmt >/dev/null 2>&1 && timeout 3 btmgmt --index 0 bondable on >/dev/null 2>&1 || true'

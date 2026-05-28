@@ -22,17 +22,33 @@ class Rejected(dbus.DBusException):
 
 
 class Agent(dbus.service.Object):
+    def __init__(self, bus, path):
+        self._bus = bus
+        super().__init__(bus, path)
+
+    def _set_trusted(self, device_path):
+        try:
+            dev = dbus.Interface(
+                self._bus.get_object(BUS_NAME, device_path),
+                "org.freedesktop.DBus.Properties",
+            )
+            dev.Set("org.bluez.Device1", "Trusted", dbus.Boolean(True))
+        except Exception:
+            pass
+
     @dbus.service.method(AGENT_IFACE, in_signature="", out_signature="")
     def Release(self):
         pass
 
     @dbus.service.method(AGENT_IFACE, in_signature="o", out_signature="s")
-    def RequestPinCode(self, _device):
+    def RequestPinCode(self, device):
         # Legacy PIN flows are not used in NoInputNoOutput mode.
+        self._set_trusted(device)
         return "0000"
 
     @dbus.service.method(AGENT_IFACE, in_signature="o", out_signature="u")
-    def RequestPasskey(self, _device):
+    def RequestPasskey(self, device):
+        self._set_trusted(device)
         return dbus.UInt32(0)
 
     @dbus.service.method(AGENT_IFACE, in_signature="ou", out_signature="")
@@ -44,16 +60,19 @@ class Agent(dbus.service.Object):
         pass
 
     @dbus.service.method(AGENT_IFACE, in_signature="ou", out_signature="")
-    def RequestConfirmation(self, _device, _passkey):
+    def RequestConfirmation(self, device, _passkey):
         # Auto-accept numeric comparison.
+        self._set_trusted(device)
         return
 
     @dbus.service.method(AGENT_IFACE, in_signature="o", out_signature="")
-    def RequestAuthorization(self, _device):
+    def RequestAuthorization(self, device):
+        self._set_trusted(device)
         return
 
     @dbus.service.method(AGENT_IFACE, in_signature="os", out_signature="")
-    def AuthorizeService(self, _device, _uuid):
+    def AuthorizeService(self, device, _uuid):
+        self._set_trusted(device)
         return
 
     @dbus.service.method(AGENT_IFACE, in_signature="", out_signature="")
