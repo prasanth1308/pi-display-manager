@@ -145,6 +145,9 @@ chmod +x "$SCRIPT_DIR/backend/slideshow_api.py"
 if [ -f "$SCRIPT_DIR/backend/bluetooth_pan_manager.sh" ]; then
     chmod +x "$SCRIPT_DIR/backend/bluetooth_pan_manager.sh"
 fi
+if [ -f "$SCRIPT_DIR/backend/bluetooth_stack_manager.sh" ]; then
+    chmod +x "$SCRIPT_DIR/backend/bluetooth_stack_manager.sh"
+fi
 
 # Stop and clean up existing service before re-setup
 echo "Preparing existing pi-slideshow service (if any)..."
@@ -171,18 +174,10 @@ if [ -f "$SCRIPT_DIR/pi-slideshow.service" ]; then
     sudo rm -f /etc/systemd/system/pi-slideshow.service
     sudo cp "$SCRIPT_DIR/pi-slideshow.service" /etc/systemd/system/pi-slideshow.service
 
-    # Replace optional Bluetooth helper units too
-    if [ -f "$SCRIPT_DIR/pi-bt-agent.service" ]; then
-        sudo rm -f /etc/systemd/system/pi-bt-agent.service
-        sudo cp "$SCRIPT_DIR/pi-bt-agent.service" /etc/systemd/system/pi-bt-agent.service
-    fi
-    if [ -f "$SCRIPT_DIR/pi-bt-nap.service" ]; then
-        sudo rm -f /etc/systemd/system/pi-bt-nap.service
-        sudo cp "$SCRIPT_DIR/pi-bt-nap.service" /etc/systemd/system/pi-bt-nap.service
-    fi
-    if [ -f "$SCRIPT_DIR/pi-bt-pan-ip.service" ]; then
-        sudo rm -f /etc/systemd/system/pi-bt-pan-ip.service
-        sudo cp "$SCRIPT_DIR/pi-bt-pan-ip.service" /etc/systemd/system/pi-bt-pan-ip.service
+    # Replace unified Bluetooth stack unit
+    if [ -f "$SCRIPT_DIR/pi-bt-stack.service" ]; then
+        sudo rm -f /etc/systemd/system/pi-bt-stack.service
+        sudo cp "$SCRIPT_DIR/pi-bt-stack.service" /etc/systemd/system/pi-bt-stack.service
     fi
 
     # Reload systemd daemon after replacing unit files
@@ -191,18 +186,16 @@ if [ -f "$SCRIPT_DIR/pi-slideshow.service" ]; then
     # Enable service to start on boot
     sudo systemctl enable pi-slideshow.service
 
-    # Install optional Bluetooth helper services for auto-pair + PAN web access
-    if [ -f "$SCRIPT_DIR/pi-bt-agent.service" ]; then
-        sudo systemctl enable pi-bt-agent.service
-        sudo systemctl restart pi-bt-agent.service || true
-    fi
-    if [ -f "$SCRIPT_DIR/pi-bt-nap.service" ]; then
-        sudo systemctl enable pi-bt-nap.service
-        sudo systemctl restart pi-bt-nap.service || true
-    fi
-    if [ -f "$SCRIPT_DIR/pi-bt-pan-ip.service" ]; then
-        sudo systemctl enable pi-bt-pan-ip.service
-        sudo systemctl restart pi-bt-pan-ip.service || true
+    # Disable old split Bluetooth services (if present)
+    sudo systemctl disable --now pi-bt-agent.service >/dev/null 2>&1 || true
+    sudo systemctl disable --now pi-bt-nap.service >/dev/null 2>&1 || true
+    sudo systemctl disable --now pi-bt-pan-ip.service >/dev/null 2>&1 || true
+
+    # Install unified Bluetooth stack service for auto-pair + PAN web access
+    if [ -f "$SCRIPT_DIR/pi-bt-stack.service" ]; then
+        sudo systemctl enable pi-bt-stack.service
+        sudo systemctl restart pi-bt-stack.service || true
+        echo "Unified Bluetooth stack service installed and enabled"
     fi
 
     # Set framebuffer permissions
