@@ -171,17 +171,17 @@ sudo pkill -f "bt-network -s nap" >/dev/null 2>&1 || true
 # Setup systemd service
 echo "[11/11] Setting up systemd service..."
 if [ -f "$SCRIPT_DIR/pi-slideshow.service" ]; then
-    # Determine the actual installation path
-    INSTALL_PATH="$SCRIPT_DIR"
+    # Always replace existing units in systemd folder with latest files from repo
+    sudo rm -f /etc/systemd/system/pi-slideshow.service
+    sudo cp "$SCRIPT_DIR/pi-slideshow.service" /etc/systemd/system/pi-slideshow.service
 
-    # Copy service file to systemd directory
-    sudo cp "$SCRIPT_DIR/pi-slideshow.service" /etc/systemd/system/
+    # Replace optional BLE GATT server unit too
+    if [ -f "$SCRIPT_DIR/pi-gatt.service" ]; then
+        sudo rm -f /etc/systemd/system/pi-gatt.service
+        sudo cp "$SCRIPT_DIR/pi-gatt.service" /etc/systemd/system/pi-gatt.service
+    fi
 
-    # Update service file with correct paths (service runs as root for framebuffer access)
-    sudo sed -i "s|WorkingDirectory=/home/larokiaraj/pi-display-manager|WorkingDirectory=$INSTALL_PATH|g" /etc/systemd/system/pi-slideshow.service
-    sudo sed -i "s|ExecStart=/home/larokiaraj/pi-display-manager/venv/bin/python3 /home/larokiaraj/pi-display-manager/backend/slideshow_api.py|ExecStart=$INSTALL_PATH/venv/bin/python3 $INSTALL_PATH/backend/slideshow_api.py|g" /etc/systemd/system/pi-slideshow.service
-
-    # Reload systemd daemon
+    # Reload systemd daemon after replacing unit files
     sudo systemctl daemon-reload
 
     # Enable service to start on boot
@@ -189,11 +189,6 @@ if [ -f "$SCRIPT_DIR/pi-slideshow.service" ]; then
 
     # Install optional BLE GATT server service
     if [ -f "$SCRIPT_DIR/pi-gatt.service" ]; then
-        sudo cp "$SCRIPT_DIR/pi-gatt.service" /etc/systemd/system/
-        sudo sed -i "s|WorkingDirectory=/home/larokiaraj/pi-display-manager|WorkingDirectory=$INSTALL_PATH|g" /etc/systemd/system/pi-gatt.service
-        sudo sed -i "s|ExecStart=/home/larokiaraj/pi-display-manager/venv/bin/python3 /home/larokiaraj/pi-display-manager/backend/gatt_server.py|ExecStart=$INSTALL_PATH/venv/bin/python3 $INSTALL_PATH/backend/gatt_server.py|g" /etc/systemd/system/pi-gatt.service
-        sudo sed -i "s|ExecStart=/usr/bin/python3 /home/larokiaraj/pi-display-manager/backend/gatt_server.py|ExecStart=$INSTALL_PATH/venv/bin/python3 $INSTALL_PATH/backend/gatt_server.py|g" /etc/systemd/system/pi-gatt.service
-        sudo systemctl daemon-reload
         sudo systemctl enable pi-gatt.service
         sudo systemctl restart pi-gatt.service || true
         echo "BLE GATT service installed and enabled"
