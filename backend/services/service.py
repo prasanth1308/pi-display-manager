@@ -13,6 +13,7 @@ import threading
 import time
 import uuid
 import tempfile
+import re
 from datetime import datetime
 from pathlib import Path
 import yt_dlp
@@ -129,6 +130,112 @@ def load_playlists_db():
     except Exception as e:
         logger.error("Failed to load playlists database: %s", e)
         playlists_db = {"playlists": {}, "active_playlist": None}
+
+
+def scan_wifi_networks():
+    """Scan and return nearby Wi-Fi networks."""
+    networks_by_ssid = {}
+
+    def _upsert_network(ssid, signal_dbm, quality, secure):
+        if not ssid:
+            return
+        existing = networks_by_ssid.get(ssid)
+        if existing is None or signal_dbm > existing.get("signal_dbm", -999):
+            networks_by_ssid[ssid] = {
+                "ssid": ssid,
+                "signal_dbm": signal_dbm,
+                "quality": quality,
+                "secure": secure,
+            }
+
+    # Try nmcli first when available.
+    try:
+        result = subprocess.run(
+            ["nmcli", "-t", "-f", "SSID,SIGNAL,SECURITY", "dev", "wifi", "list"],
+            capture_output=True,
+            text=True,
+            timeout=12,
+            check=False,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            for line in result.stdout.splitlines():
+                parts = line.split(":")
+                if len(parts) < 3:
+                    continue
+                ssid = parts[0].strip()
+                if not ssid:
+                    continue
+                signal_pct = parts[1].strip()
+                try:
+                    quality = int(signal_pct)
+                    signal_dbm = int((quality / 2) - 100)
+                except ValueError:
+                    quality = 0
+                    signal_dbm = -100
+                secure = bool(parts[2].strip())
+                _upsert_network(ssid, signal_dbm, quality, secure)
+    except Exception:
+        pass
+
+    # Fallback to iwlist scan (works on Lite without NetworkManager).
+    if not networks_by_ssid:
+        wifi_ifaces = ["wlan0"]
+        try:
+            iface_result = subprocess.run(
+                ["iw", "dev"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+            if iface_result.returncode == 0:
+                found_ifaces = re.findall(r"Interface\s+(\S+)", iface_result.stdout)
+                if found_ifaces:
+                    wifi_ifaces = found_ifaces
+        except Exception:
+            pass
+
+        for iface in wifi_ifaces:
+            try:
+                result = subprocess.run(
+                    ["iwlist", iface, "scan"],
+                    capture_output=True,
+                    text=True,
+                    timeout=18,
+                    check=False,
+                )
+                if result.returncode != 0 or not result.stdout:
+                    continue
+
+                cells = result.stdout.split("Cell ")
+                for cell in cells:
+                    ssid_match = re.search(r'ESSID:"(.*?)"', cell)
+                    if not ssid_match:
+                        continue
+                    ssid = ssid_match.group(1).strip()
+                    if not ssid:
+                        continue
+
+                    signal_match = re.search(r"Signal level=(-?\d+)\s*dBm", cell)
+                    quality_match = re.search(r"Quality=(\d+)/(\d+)", cell)
+                    encryption_match = re.search(r"Encryption key:(on|off)", cell)
+
+                    signal_dbm = int(signal_match.group(1)) if signal_match else -100
+                    if quality_match:
+                        qn = int(quality_match.group(1))
+                        qd = int(quality_match.group(2))
+                        quality = int((qn / qd) * 100) if qd else 0
+                    else:
+                        quality = max(0, min(100, int((signal_dbm + 100) * 2)))
+
+                    secure = encryption_match and encryption_match.group(1) == "on"
+                    _upsert_network(ssid, signal_dbm, quality, bool(secure))
+            except Exception:
+                continue
+
+    networks = list(networks_by_ssid.values())
+    networks.sort(key=lambda item: item.get("signal_dbm", -999), reverse=True)
+    return networks
 
 
 # ── Idle Screen ───────────────────────────────────────────────────────────────

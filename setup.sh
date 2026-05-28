@@ -23,7 +23,19 @@ sudo apt-get install -y fbi
 
 # Install Bluetooth packages
 echo "[3/11] Installing Bluetooth packages (bluetooth, bluez, bluez-tools)..."
-sudo apt-get install -y bluetooth bluez bluez-tools
+sudo apt-get install -y bluetooth bluez bluez-tools avahi-daemon avahi-utils wireless-tools
+
+# Configure hostname and mDNS access as pi.local
+if [ "$(hostname)" != "pi" ]; then
+    echo "Setting hostname to pi for mDNS access (pi.local)..."
+    sudo hostnamectl set-hostname pi
+fi
+
+# Ensure Bluetooth and Avahi are enabled
+sudo systemctl enable bluetooth
+sudo systemctl enable avahi-daemon
+sudo systemctl restart bluetooth
+sudo systemctl restart avahi-daemon
 
 # Install VLC for video playback
 echo "[4/11] Installing VLC media player..."

@@ -7,6 +7,12 @@ After=network-online.target multi-user.target
 Type=simple
 User=root
 WorkingDirectory=/home/larokiaraj/pi-display-manager
+ExecStartPre=/bin/systemctl start bluetooth.service
+ExecStartPre=/bin/systemctl start avahi-daemon.service
+ExecStartPre=/bin/sh -c '/usr/bin/bluetoothctl --timeout 5 power on || true'
+ExecStartPre=/bin/sh -c '/usr/bin/bluetoothctl --timeout 5 pairable on || true'
+ExecStartPre=/bin/sh -c '/usr/bin/bluetoothctl --timeout 5 discoverable on || true'
+ExecStartPre=/bin/sh -c 'command -v bt-network >/dev/null 2>&1 && (pkill -f "bt-network -s nap" >/dev/null 2>&1 || true) && (nohup bt-network -s nap >/tmp/bt-network.log 2>&1 &) || true'
 ExecStartPre=/bin/systemctl stop getty@tty1.service
 ExecStartPre=/bin/systemctl mask --runtime getty@tty1.service
 ExecStartPre=/bin/sh -c 'TERM=linux setterm -cursor off > /dev/tty1 || true'
@@ -17,6 +23,7 @@ StandardOutput=null
 StandardError=null
 ExecStopPost=/bin/systemctl unmask --runtime getty@tty1.service
 ExecStopPost=/bin/systemctl start getty@tty1.service
+ExecStopPost=/bin/sh -c 'pkill -f "bt-network -s nap" >/dev/null 2>&1 || true'
 
 [Install]
 WantedBy=multi-user.target

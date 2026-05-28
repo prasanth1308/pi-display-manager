@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin - Pi Display Manager</title>
+    <link rel="stylesheet" href="/frontend/style.css" />
+    <style>
+      .admin-card {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        padding: 16px;
+        box-shadow: var(--shadow);
+      }
+
+      .admin-toolbar {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        margin-bottom: 12px;
+      }
+
+      .wifi-table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      .wifi-table th,
+      .wifi-table td {
+        text-align: left;
+        padding: 10px 8px;
+        border-bottom: 1px solid var(--border-color);
+        font-size: 0.95rem;
+      }
+
+      .wifi-table th {
+        color: var(--text-secondary);
+        font-weight: 600;
+      }
+
+      .chip {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 0.8rem;
+      }
+
+      .chip.secure {
+        background: rgba(16, 185, 129, 0.2);
+        color: #6ee7b7;
+      }
+
+      .chip.open {
+        background: rgba(245, 158, 11, 0.2);
+        color: #fcd34d;
+      }
+
+      .hint {
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+      }
+
+      .top-links {
+        display: flex;
+        gap: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <div class="header-top">
+          <h1>Admin</h1>
+          <div class="top-links">
+            <a href="/" class="btn btn-secondary btn-sm">Dashboard</a>
+            <button id="logout-btn" class="btn btn-secondary btn-sm">Logout</button>
+          </div>
+        </div>
+      </header>
+
+      <main>
+        <section class="admin-card">
+          <div class="admin-toolbar">
+            <div>
+              <h2>Available Wi-Fi Networks</h2>
+              <p class="hint">Scanned from the Raspberry Pi network interface.</p>
+            </div>
+            <button id="refresh-btn" class="btn btn-primary">Refresh</button>
+          </div>
+
+          <div id="status" class="hint" style="margin-bottom: 8px"></div>
+
+          <div style="overflow-x: auto">
+            <table class="wifi-table" id="wifi-table">
+              <thead>
+                <tr>
+                  <th>SSID</th>
+                  <th>Signal (dBm)</th>
+                  <th>Quality</th>
+                  <th>Security</th>
+                </tr>
+              </thead>
+              <tbody id="wifi-body"></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      async function loadWifiNetworks() {
+        const statusEl = document.getElementById("status");
+        const bodyEl = document.getElementById("wifi-body");
+        statusEl.textContent = "Scanning nearby networks...";
+        bodyEl.innerHTML = "";
+
+        try {
+          const response = await fetch("/api/admin/wifi-networks");
+          if (response.status === 401) {
+            window.location.href = "/login.html";
+            return;
+          }
+
+          const data = await response.json();
+          const networks = Array.isArray(data.networks) ? data.networks : [];
+
+          if (!networks.length) {
+            statusEl.textContent = "No Wi-Fi networks found.";
+            bodyEl.innerHTML = "<tr><td colspan='4' class='hint'>No networks found</td></tr>";
+            return;
+          }
+
+          statusEl.textContent = "Found " + networks.length + " network(s).";
+          bodyEl.innerHTML = networks
+            .map((network) => {
+              const secure = network.secure ? "Secure" : "Open";
+              const chipClass = network.secure ? "secure" : "open";
+              return (
+                "<tr>" +
+                "<td>" + (network.ssid || "-") + "</td>" +
+                "<td>" + String(network.signal_dbm ?? "-") + "</td>" +
+                "<td>" + String(network.quality ?? "-") + "%</td>" +
+                "<td><span class='chip " + chipClass + "'>" + secure + "</span></td>" +
+                "</tr>"
+              );
+            })
+            .join("");
+        } catch (error) {
+          statusEl.textContent = "Failed to scan Wi-Fi networks.";
+          bodyEl.innerHTML = "<tr><td colspan='4' class='hint'>Scan failed</td></tr>";
+        }
+      }
+
+      async function logout() {
+        await fetch("/api/auth/logout");
+        window.location.href = "/login.html";
+      }
+
+      document.getElementById("refresh-btn").addEventListener("click", loadWifiNetworks);
+      document.getElementById("logout-btn").addEventListener("click", logout);
+      loadWifiNetworks();
+    </script>
+  </body>
+</html>

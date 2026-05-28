@@ -42,6 +42,9 @@ from services.service import (
     # Scheduler
     load_schedules_db, list_schedules, get_schedule, create_schedule,
     update_schedule, delete_schedule, stop_scheduler, start_scheduler,
+
+    # Admin
+    scan_wifi_networks,
 )
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -658,6 +661,18 @@ def health_check():
     """API health check"""
     return jsonify({"status": "ok"})
 
+
+@app.route('/api/admin/wifi-networks', methods=['GET'])
+@require_auth
+def admin_wifi_networks(user_info):
+    """Return nearby Wi-Fi networks for admin view."""
+    try:
+        networks = scan_wifi_networks()
+        return jsonify({"status": "success", "networks": networks})
+    except Exception as e:
+        service.logger.error("Wi-Fi scan failed: %s", str(e))
+        return jsonify({"status": "error", "message": "Wi-Fi scan failed", "networks": []}), 500
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Static File Serving
 # ═══════════════════════════════════════════════════════════════════════════
@@ -677,6 +692,17 @@ def serve_index():
 def serve_login():
     """Serve login page"""
     return send_file(service.STATIC_DIR / "login.html")
+
+
+@app.route('/admin')
+@app.route('/admin.html')
+def serve_admin():
+    """Serve admin page"""
+    session_token = request.cookies.get('session_token')
+    user_info = validate_session(session_token)
+    if not user_info:
+        return redirect('/login.html')
+    return send_file(service.STATIC_DIR / "admin.html")
 
 # Serve static files from frontend
 @app.route('/frontend/<path:filename>')
