@@ -139,6 +139,9 @@ fi
 
 # Make scripts executable
 chmod +x "$SCRIPT_DIR/backend/slideshow_api.py"
+if [ -f "$SCRIPT_DIR/backend/gatt_server.py" ]; then
+    chmod +x "$SCRIPT_DIR/backend/gatt_server.py"
+fi
 
 # Stop and clean up existing service before re-setup
 echo "Preparing existing pi-slideshow service (if any)..."
@@ -176,6 +179,17 @@ if [ -f "$SCRIPT_DIR/pi-slideshow.service" ]; then
 
     # Enable service to start on boot
     sudo systemctl enable pi-slideshow.service
+
+    # Install optional BLE GATT server service
+    if [ -f "$SCRIPT_DIR/pi-gatt.service" ]; then
+        sudo cp "$SCRIPT_DIR/pi-gatt.service" /etc/systemd/system/
+        sudo sed -i "s|WorkingDirectory=/home/larokiaraj/pi-display-manager|WorkingDirectory=$INSTALL_PATH|g" /etc/systemd/system/pi-gatt.service
+        sudo sed -i "s|ExecStart=/home/larokiaraj/pi-display-manager/venv/bin/python3 /home/larokiaraj/pi-display-manager/backend/gatt_server.py|ExecStart=$INSTALL_PATH/venv/bin/python3 $INSTALL_PATH/backend/gatt_server.py|g" /etc/systemd/system/pi-gatt.service
+        sudo systemctl daemon-reload
+        sudo systemctl enable pi-gatt.service
+        sudo systemctl restart pi-gatt.service || true
+        echo "BLE GATT service installed and enabled"
+    fi
 
     # Set framebuffer permissions
     sudo chmod 666 /dev/fb0

@@ -8,6 +8,7 @@ Flask==2.3.0
 yt-dlp>=2023.3.4
 Pillow>=9.0.0
 pdf2image>=1.16.0
+bluezero>=0.8.0
 
 # Standard library modules used:
 # - os, json, subprocess, signal, sys, logging
