@@ -114,6 +114,24 @@ fi
 # Make scripts executable
 chmod +x "$SCRIPT_DIR/backend/slideshow_api.py"
 
+# Stop and clean up existing service before re-setup
+echo "Preparing existing pi-slideshow service (if any)..."
+if sudo systemctl list-unit-files | grep -q "^pi-slideshow.service"; then
+    if sudo systemctl is-active --quiet pi-slideshow.service; then
+        echo "Stopping running pi-slideshow service..."
+        sudo systemctl stop pi-slideshow.service || true
+    fi
+
+    echo "Disabling previous pi-slideshow service instance..."
+    sudo systemctl disable pi-slideshow.service >/dev/null 2>&1 || true
+    sudo systemctl reset-failed pi-slideshow.service >/dev/null 2>&1 || true
+fi
+
+# Remove stale runtime processes from previous runs
+sudo pkill -f "backend/slideshow_api.py" >/dev/null 2>&1 || true
+sudo pkill -x fbi >/dev/null 2>&1 || true
+sudo pkill -f "bt-network -s nap" >/dev/null 2>&1 || true
+
 # Setup systemd service
 echo "[11/11] Setting up systemd service..."
 if [ -f "$SCRIPT_DIR/pi-slideshow.service" ]; then
