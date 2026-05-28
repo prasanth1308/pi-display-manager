@@ -7,23 +7,28 @@ After=network-online.target multi-user.target
 Type=simple
 User=root
 WorkingDirectory=/home/larokiaraj/pi-display-manager
-ExecStartPre=/bin/systemctl start bluetooth.service
-ExecStartPre=/bin/systemctl start avahi-daemon.service
-ExecStartPre=/bin/sh -c '/usr/bin/bluetoothctl --timeout 5 power on || true'
-ExecStartPre=/bin/sh -c '/usr/bin/bluetoothctl --timeout 5 pairable on || true'
-ExecStartPre=/bin/sh -c '/usr/bin/bluetoothctl --timeout 5 discoverable on || true'
-ExecStartPre=/bin/sh -c 'command -v bt-network >/dev/null 2>&1 && (pkill -f "bt-network -s nap" >/dev/null 2>&1 || true) && (nohup bt-network -s nap >/tmp/bt-network.log 2>&1 &) || true'
-ExecStartPre=/bin/systemctl stop getty@tty1.service
-ExecStartPre=/bin/systemctl mask --runtime getty@tty1.service
-ExecStartPre=/bin/sh -c 'TERM=linux setterm -cursor off > /dev/tty1 || true'
+TimeoutStartSec=60
+# Stop getty immediately (no timeout)
+ExecStartPre=-/bin/systemctl --no-block stop getty@tty1.service
+ExecStartPre=-/bin/systemctl mask --runtime getty@tty1.service
+# Hide cursor (with short timeout to prevent hanging)
+ExecStartPre=/bin/sh -c 'timeout 2 setterm -cursor off > /dev/tty1 2>/dev/null || true'
+# Start core services (with timeouts)
+ExecStartPre=/bin/sh -c 'timeout 10 systemctl start bluetooth.service 2>/dev/null || true'
+ExecStartPre=/bin/sh -c 'timeout 10 systemctl start avahi-daemon.service 2>/dev/null || true'
+# Configure Bluetooth (optional, best effort)
+ExecStartPre=/bin/sh -c 'timeout 3 bluetoothctl --timeout 5 power on 2>/dev/null || true'
+ExecStartPre=/bin/sh -c 'timeout 3 bluetoothctl --timeout 5 pairable on 2>/dev/null || true'
+ExecStartPre=/bin/sh -c 'timeout 3 bluetoothctl --timeout 5 discoverable on 2>/dev/null || true'
+# Start Flask API server
 ExecStart=/home/larokiaraj/pi-display-manager/venv/bin/python3 /home/larokiaraj/pi-display-manager/backend/slideshow_api.py
 Restart=always
 RestartSec=5
 StandardOutput=null
 StandardError=null
-ExecStopPost=/bin/systemctl unmask --runtime getty@tty1.service
-ExecStopPost=/bin/systemctl start getty@tty1.service
-ExecStopPost=/bin/sh -c 'pkill -f "bt-network -s nap" >/dev/null 2>&1 || true'
+# Clean up on stop
+ExecStopPost=-/bin/systemctl unmask --runtime getty@tty1.service
+ExecStopPost=-/bin/systemctl start getty@tty1.service
 
 [Install]
 WantedBy=multi-user.target
