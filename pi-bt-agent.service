@@ -1,0 +1,17 @@
+[Unit]
+Description=Pi Bluetooth Auto-Accept Pairing Agent
+After=bluetooth.service
+Wants=bluetooth.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/larokiaraj/pi-display-manager
+ExecStart=/home/larokiaraj/pi-display-manager/venv/bin/python3 /home/larokiaraj/pi-display-manager/backend/bluetooth_auto_accept_agent.py
+Restart=always
+RestartSec=2
+StandardOutput=append:/home/larokiaraj/pi-display-manager/bt_agent.log
+StandardError=append:/home/larokiaraj/pi-display-manager/bt_agent.log
+
+[Install]
+WantedBy=multi-user.target

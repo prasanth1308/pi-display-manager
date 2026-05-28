@@ -1,0 +1,16 @@
+[Unit]
+Description=Pi Bluetooth PAN NAP Server
+After=bluetooth.service
+Wants=bluetooth.service
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/bt-network -s nap
+Restart=always
+RestartSec=2
+StandardOutput=append:/home/larokiaraj/pi-display-manager/bt_nap.log
+StandardError=append:/home/larokiaraj/pi-display-manager/bt_nap.log
+
+[Install]
+WantedBy=multi-user.target

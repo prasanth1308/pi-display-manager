@@ -28,7 +28,7 @@ fi
 
 # Install Bluetooth packages
 echo "[3/11] Checking Bluetooth packages..."
-for pkg in bluetooth bluez bluez-tools avahi-daemon avahi-utils wireless-tools python3-gi python3-dbus; do
+for pkg in bluetooth bluez bluez-tools avahi-daemon avahi-utils wireless-tools python3-gi python3-dbus dnsmasq; do
     if ! dpkg -l | grep -q "^ii.*$pkg "; then
         echo "Installing $pkg..."
         sudo apt-get install -y "$pkg"
@@ -140,14 +140,10 @@ else
     "$SCRIPT_DIR/venv/bin/pip" install --upgrade yt-dlp
 fi
 
-# Install Bluezero in the same venv, avoid pip trying to build PyGObject
-echo "Installing BLE GATT Python package (bluezero) in shared venv..."
-"$SCRIPT_DIR/venv/bin/pip" install --no-deps --upgrade bluezero
-
 # Make scripts executable
 chmod +x "$SCRIPT_DIR/backend/slideshow_api.py"
-if [ -f "$SCRIPT_DIR/backend/gatt_server.py" ]; then
-    chmod +x "$SCRIPT_DIR/backend/gatt_server.py"
+if [ -f "$SCRIPT_DIR/backend/bluetooth_pan_manager.sh" ]; then
+    chmod +x "$SCRIPT_DIR/backend/bluetooth_pan_manager.sh"
 fi
 
 # Stop and clean up existing service before re-setup
@@ -175,10 +171,18 @@ if [ -f "$SCRIPT_DIR/pi-slideshow.service" ]; then
     sudo rm -f /etc/systemd/system/pi-slideshow.service
     sudo cp "$SCRIPT_DIR/pi-slideshow.service" /etc/systemd/system/pi-slideshow.service
 
-    # Replace optional BLE GATT server unit too
-    if [ -f "$SCRIPT_DIR/pi-gatt.service" ]; then
-        sudo rm -f /etc/systemd/system/pi-gatt.service
-        sudo cp "$SCRIPT_DIR/pi-gatt.service" /etc/systemd/system/pi-gatt.service
+    # Replace optional Bluetooth helper units too
+    if [ -f "$SCRIPT_DIR/pi-bt-agent.service" ]; then
+        sudo rm -f /etc/systemd/system/pi-bt-agent.service
+        sudo cp "$SCRIPT_DIR/pi-bt-agent.service" /etc/systemd/system/pi-bt-agent.service
+    fi
+    if [ -f "$SCRIPT_DIR/pi-bt-nap.service" ]; then
+        sudo rm -f /etc/systemd/system/pi-bt-nap.service
+        sudo cp "$SCRIPT_DIR/pi-bt-nap.service" /etc/systemd/system/pi-bt-nap.service
+    fi
+    if [ -f "$SCRIPT_DIR/pi-bt-pan-ip.service" ]; then
+        sudo rm -f /etc/systemd/system/pi-bt-pan-ip.service
+        sudo cp "$SCRIPT_DIR/pi-bt-pan-ip.service" /etc/systemd/system/pi-bt-pan-ip.service
     fi
 
     # Reload systemd daemon after replacing unit files
@@ -187,11 +191,18 @@ if [ -f "$SCRIPT_DIR/pi-slideshow.service" ]; then
     # Enable service to start on boot
     sudo systemctl enable pi-slideshow.service
 
-    # Install optional BLE GATT server service
-    if [ -f "$SCRIPT_DIR/pi-gatt.service" ]; then
-        sudo systemctl enable pi-gatt.service
-        sudo systemctl restart pi-gatt.service || true
-        echo "BLE GATT service installed and enabled"
+    # Install optional Bluetooth helper services for auto-pair + PAN web access
+    if [ -f "$SCRIPT_DIR/pi-bt-agent.service" ]; then
+        sudo systemctl enable pi-bt-agent.service
+        sudo systemctl restart pi-bt-agent.service || true
+    fi
+    if [ -f "$SCRIPT_DIR/pi-bt-nap.service" ]; then
+        sudo systemctl enable pi-bt-nap.service
+        sudo systemctl restart pi-bt-nap.service || true
+    fi
+    if [ -f "$SCRIPT_DIR/pi-bt-pan-ip.service" ]; then
+        sudo systemctl enable pi-bt-pan-ip.service
+        sudo systemctl restart pi-bt-pan-ip.service || true
     fi
 
     # Set framebuffer permissions
