@@ -18,12 +18,24 @@ echo "[1/11] Updating package list..."
 sudo apt-get update
 
 # Install fbi package
-echo "[2/11] Installing fbi (framebuffer image viewer)..."
-sudo apt-get install -y fbi
+echo "[2/11] Checking fbi (framebuffer image viewer)..."
+if ! dpkg -l | grep -q "^ii.*fbi "; then
+    echo "Installing fbi..."
+    sudo apt-get install -y fbi
+else
+    echo "fbi already installed"
+fi
 
 # Install Bluetooth packages
-echo "[3/11] Installing Bluetooth packages (bluetooth, bluez, bluez-tools)..."
-sudo apt-get install -y bluetooth bluez bluez-tools avahi-daemon avahi-utils wireless-tools
+echo "[3/11] Checking Bluetooth packages..."
+for pkg in bluetooth bluez bluez-tools avahi-daemon avahi-utils wireless-tools; do
+    if ! dpkg -l | grep -q "^ii.*$pkg "; then
+        echo "Installing $pkg..."
+        sudo apt-get install -y "$pkg"
+    else
+        echo "$pkg already installed"
+    fi
+done
 
 
 # Ensure Bluetooth and Avahi are enabled
@@ -33,24 +45,43 @@ sudo systemctl restart bluetooth
 sudo systemctl restart avahi-daemon
 
 # Install VLC for video playback
-echo "[4/11] Installing VLC media player..."
-sudo apt-get install -y vlc
+echo "[4/11] Checking VLC media player..."
+if ! dpkg -l | grep -q "^ii.*vlc "; then
+    echo "Installing VLC..."
+    sudo apt-get install -y vlc
+else
+    echo "VLC already installed"
+fi
 
 # Install ffmpeg for video processing
-echo "[5/11] Installing ffmpeg (includes ffprobe)..."
-sudo apt-get install -y ffmpeg
-echo "ffmpeg installed: $(ffmpeg -version | head -n 1)"
+echo "[5/11] Checking ffmpeg (includes ffprobe)..."
+if ! command -v ffmpeg &> /dev/null; then
+    echo "Installing ffmpeg..."
+    sudo apt-get install -y ffmpeg
+    echo "ffmpeg installed: $(ffmpeg -version | head -n 1)"
+else
+    echo "ffmpeg already installed: $(ffmpeg -version | head -n 1)"
+fi
 
 # Install poppler-utils for PDF conversion
-echo "[6/11] Installing poppler-utils (for PDF conversion)..."
-sudo apt-get install -y poppler-utils
-echo "poppler-utils installed successfully"
+echo "[6/11] Checking poppler-utils (for PDF conversion)..."
+if ! command -v pdftoppm &> /dev/null; then
+    echo "Installing poppler-utils..."
+    sudo apt-get install -y poppler-utils
+    echo "poppler-utils installed successfully"
+else
+    echo "poppler-utils already installed"
+fi
 
 # Install LibreOffice for PowerPoint conversion
-echo "[7/11] Installing LibreOffice (for PowerPoint conversion)..."
-echo "Note: This may take several minutes..."
-sudo apt-get install -y libreoffice --no-install-recommends
-echo "LibreOffice installed: $(soffice --version 2>/dev/null || echo 'version check failed')"
+echo "[7/11] Checking LibreOffice (for PowerPoint conversion)..."
+if ! command -v soffice &> /dev/null; then
+    echo "Installing LibreOffice (this may take several minutes)..."
+    sudo apt-get install -y libreoffice --no-install-recommends
+    echo "LibreOffice installed: $(soffice --version 2>/dev/null || echo 'version check failed')"
+else
+    echo "LibreOffice already installed: $(soffice --version 2>/dev/null)"
+fi
 
 # Install Python3 and pip
 echo "[8/11] Checking Python3 and pip..."
