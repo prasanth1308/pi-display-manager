@@ -1,16 +1,22 @@
 [Unit]
 Description=Pi Display Manager - Image Slideshow Service with Web Interface
-After=local-fs.target network.target
+Wants=network-online.target
+After=network-online.target multi-user.target
 
 [Service]
 Type=simple
 User=root
 WorkingDirectory=/home/larokiaraj/pi-display-manager
+ExecStartPre=/bin/systemctl stop getty@tty1.service
+ExecStartPre=/bin/systemctl mask --runtime getty@tty1.service
+ExecStartPre=/bin/sh -c 'TERM=linux setterm -cursor off > /dev/tty1 || true'
 ExecStart=/home/larokiaraj/pi-display-manager/venv/bin/python3 /home/larokiaraj/pi-display-manager/backend/slideshow_api.py
 Restart=always
 RestartSec=5
-StandardOutput=journal
-StandardError=journal
+StandardOutput=null
+StandardError=null
+ExecStopPost=/bin/systemctl unmask --runtime getty@tty1.service
+ExecStopPost=/bin/systemctl start getty@tty1.service
 
 [Install]
 WantedBy=multi-user.target

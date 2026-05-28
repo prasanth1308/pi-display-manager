@@ -716,7 +716,7 @@ def initialize_app():
     
     # Configure Flask static folder after service initialization
     app.static_folder = str(service.STATIC_DIR)
-    
+
     # Auto-start default playlist if configured; otherwise start idle screen
     if not start_default_playlist():
         cfg = get_idle_config()
