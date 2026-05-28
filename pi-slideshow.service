@@ -16,10 +16,17 @@ ExecStartPre=/bin/sh -c 'timeout 2 setterm -cursor off > /dev/tty1 2>/dev/null |
 # Start core services (with timeouts)
 ExecStartPre=/bin/sh -c 'timeout 10 systemctl start bluetooth.service 2>/dev/null || true'
 ExecStartPre=/bin/sh -c 'timeout 10 systemctl start avahi-daemon.service 2>/dev/null || true'
-# Configure Bluetooth (optional, best effort)
+# Configure Bluetooth (best effort, keep settings persistent)
+ExecStartPre=/bin/sh -c 'timeout 3 hciconfig hci0 up 2>/dev/null || true'
 ExecStartPre=/bin/sh -c 'timeout 3 bluetoothctl --timeout 5 power on 2>/dev/null || true'
 ExecStartPre=/bin/sh -c 'timeout 3 bluetoothctl --timeout 5 pairable on 2>/dev/null || true'
 ExecStartPre=/bin/sh -c 'timeout 3 bluetoothctl --timeout 5 discoverable on 2>/dev/null || true'
+ExecStartPre=/bin/sh -c 'timeout 3 bluetoothctl --timeout 5 pairable-timeout 0 2>/dev/null || true'
+ExecStartPre=/bin/sh -c 'timeout 3 bluetoothctl --timeout 5 discoverable-timeout 0 2>/dev/null || true'
+ExecStartPre=/bin/sh -c 'command -v btmgmt >/dev/null 2>&1 && timeout 3 btmgmt --index 0 power on >/dev/null 2>&1 || true'
+ExecStartPre=/bin/sh -c 'command -v btmgmt >/dev/null 2>&1 && timeout 3 btmgmt --index 0 connectable on >/dev/null 2>&1 || true'
+ExecStartPre=/bin/sh -c 'command -v btmgmt >/dev/null 2>&1 && timeout 3 btmgmt --index 0 bondable on >/dev/null 2>&1 || true'
+ExecStartPre=/bin/sh -c 'command -v btmgmt >/dev/null 2>&1 && timeout 3 btmgmt --index 0 advertising on >/dev/null 2>&1 || true'
 # Start Flask API server
 ExecStart=/home/larokiaraj/pi-display-manager/venv/bin/python3 /home/larokiaraj/pi-display-manager/backend/slideshow_api.py
 Restart=always
