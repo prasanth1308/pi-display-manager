@@ -28,7 +28,7 @@ fi
 
 # Install Bluetooth packages
 echo "[3/11] Checking Bluetooth packages..."
-for pkg in bluetooth bluez bluez-tools avahi-daemon avahi-utils wireless-tools; do
+for pkg in bluetooth bluez bluez-tools avahi-daemon avahi-utils wireless-tools python3-bluezero; do
     if ! dpkg -l | grep -q "^ii.*$pkg "; then
         echo "Installing $pkg..."
         sudo apt-get install -y "$pkg"
@@ -184,7 +184,7 @@ if [ -f "$SCRIPT_DIR/pi-slideshow.service" ]; then
     if [ -f "$SCRIPT_DIR/pi-gatt.service" ]; then
         sudo cp "$SCRIPT_DIR/pi-gatt.service" /etc/systemd/system/
         sudo sed -i "s|WorkingDirectory=/home/larokiaraj/pi-display-manager|WorkingDirectory=$INSTALL_PATH|g" /etc/systemd/system/pi-gatt.service
-        sudo sed -i "s|ExecStart=/home/larokiaraj/pi-display-manager/venv/bin/python3 /home/larokiaraj/pi-display-manager/backend/gatt_server.py|ExecStart=$INSTALL_PATH/venv/bin/python3 $INSTALL_PATH/backend/gatt_server.py|g" /etc/systemd/system/pi-gatt.service
+        sudo sed -i "s|ExecStart=/home/larokiaraj/pi-display-manager/venv/bin/python3 /home/larokiaraj/pi-display-manager/backend/gatt_server.py|ExecStart=/usr/bin/python3 $INSTALL_PATH/backend/gatt_server.py|g" /etc/systemd/system/pi-gatt.service
         sudo systemctl daemon-reload
         sudo systemctl enable pi-gatt.service
         sudo systemctl restart pi-gatt.service || true
