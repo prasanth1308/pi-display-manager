@@ -162,7 +162,7 @@ class PiBleGattPeripheral:
         )
 
         while not self._stop_event.is_set():
-            connected = self._is_connected()
+            connected = await self._is_connected()
             if connected != self._last_connected:
                 if connected:
                     self._logger.info("BLE central connected")
@@ -223,12 +223,15 @@ class PiBleGattPeripheral:
         except Exception as exc:  # pragma: no cover - hardware/runtime dependent
             self._logger.warning("BLE notify failed: %s", exc)
 
-    def _is_connected(self) -> bool:
+    async def _is_connected(self) -> bool:
         if not self._server:
             return False
 
         state = getattr(self._server, "is_connected", False)
         try:
-            return bool(state() if callable(state) else state)
+            value = state() if callable(state) else state
+            if asyncio.iscoroutine(value):
+                value = await value
+            return bool(value)
         except Exception:
             return False
