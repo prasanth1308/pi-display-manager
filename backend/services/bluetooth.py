@@ -19,6 +19,7 @@ Supported commands:
 import json
 import logging
 import subprocess
+import sys
 import threading
 
 logger = logging.getLogger(__name__)
@@ -250,11 +251,14 @@ def _handle_client(client_sock, client_addr):
 def _server_loop():
     try:
         import bluetooth  # type: ignore  (pybluez)
-    except ImportError:
+    except ImportError as exc:
         logger.error(
-            "pybluez is not installed. "
-            "Run: sudo apt-get install bluetooth libbluetooth-dev && "
-            "pip install pybluez"
+            "Bluetooth import failed with %s while using %s. "
+            "Verify the service venv with '%s -c "
+            "\"import bluetooth; print(bluetooth.__file__)\"'.",
+            exc,
+            sys.executable,
+            sys.executable,
         )
         return
 
