@@ -6,6 +6,8 @@ echo "Pi Display Manager v2.0 - Setup Script"
 echo "=========================================="
 echo ""
 
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
 # Check if running on Raspberry Pi
 if ! grep -q "Raspberry Pi" /proc/device-tree/model 2>/dev/null; then
     echo "Warning: This script is designed for Raspberry Pi."
@@ -66,10 +68,6 @@ sudo apt-get install -y bluetooth bluez libbluetooth-dev python3-dev
 sudo systemctl enable bluetooth
 sudo systemctl start bluetooth
 
-# Install pybluez Python library
-echo "Installing pybluez..."
-"$SCRIPT_DIR/venv/bin/pip" install pybluez 2>/dev/null || pip3 install pybluez
-
 # Configure Bluetooth: power on, make discoverable and pairable
 echo "Configuring Bluetooth (power on, discoverable, pairable)..."
 bluetoothctl power on
@@ -87,9 +85,8 @@ echo "----------------------------------------------------------"
 echo ""
 echo "Bluetooth setup complete"
 
-# Set up directory structure (moved before venv creation)
+# Set up directory structure
 echo "[8/10] Setting up directory structure..."
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Create data directories
 mkdir -p "$SCRIPT_DIR/data/playlists/default"
@@ -113,16 +110,20 @@ else
 fi
 
 # Install Python packages in virtual environment
-echo "Installing Python packages (yt-dlp)..."
+echo "Installing Python packages..."
 if [ -f "$SCRIPT_DIR/requirements.txt" ]; then
     "$SCRIPT_DIR/venv/bin/pip" install --upgrade pip
     "$SCRIPT_DIR/venv/bin/pip" install --upgrade -r "$SCRIPT_DIR/requirements.txt"
     echo "Python packages installed in virtual environment"
 else
-    echo "Installing yt-dlp directly..."
     "$SCRIPT_DIR/venv/bin/pip" install --upgrade pip
     "$SCRIPT_DIR/venv/bin/pip" install --upgrade yt-dlp
 fi
+
+# Install pybluez into the existing venv
+echo "Installing pybluez into venv..."
+"$SCRIPT_DIR/venv/bin/pip" install pybluez
+echo "pybluez installed"
 
 # Make scripts executable
 chmod +x "$SCRIPT_DIR/backend/slideshow_api.py"
