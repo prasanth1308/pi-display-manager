@@ -70,11 +70,15 @@ sudo systemctl start bluetooth
 
 # Configure Bluetooth: power on, make discoverable and pairable
 echo "Configuring Bluetooth (power on, discoverable, pairable)..."
-bluetoothctl power on
-bluetoothctl agent on
-bluetoothctl default-agent
-bluetoothctl discoverable on
-bluetoothctl pairable on
+bluetoothctl <<'EOF'
+power on
+agent NoInputNoOutput
+default-agent
+discoverable on
+pairable on
+show
+quit
+EOF
 
 echo ""
 echo "----------------------------------------------------------"
