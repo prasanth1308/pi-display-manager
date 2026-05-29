@@ -266,6 +266,21 @@ def _server_loop():
         server_sock = bluetooth.BluetoothSocket(bluetooth.RFCOMM)
         server_sock.bind(("", RFCOMM_PORT))
         server_sock.listen(1)
+        try:
+            bluetooth.advertise_service(
+                server_sock,
+                SERVICE_NAME,
+                service_id=SERVICE_UUID,
+                service_classes=[SERVICE_UUID, bluetooth.SERIAL_PORT_CLASS],
+                profiles=[bluetooth.SERIAL_PORT_PROFILE],
+            )
+        except bluetooth.BluetoothError as exc:
+            logger.warning(
+                "Bluetooth SDP advertisement failed: %s. "
+                "RFCOMM server will keep running on channel %d without discovery.",
+                exc,
+                RFCOMM_PORT,
+            )
         logger.info(
             "Bluetooth RFCOMM server listening on channel %d (service: %s)",
             RFCOMM_PORT,
