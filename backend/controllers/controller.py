@@ -42,6 +42,9 @@ from services.service import (
     # Scheduler
     load_schedules_db, list_schedules, get_schedule, create_schedule,
     update_schedule, delete_schedule, stop_scheduler, start_scheduler,
+
+    # BLE
+    start_ble_peripheral,
 )
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -726,6 +729,9 @@ def initialize_app():
     # Start scheduler
     load_schedules_db()
     start_scheduler()
+
+    # Start BLE GATT peripheral for Mac <-> Pi text commands
+    start_ble_peripheral()
     
     service.logger.info("=== Pi Display Manager Flask Started ===")
     service.logger.info("API running on http://localhost:%d", service.config.get("api_port", 80))

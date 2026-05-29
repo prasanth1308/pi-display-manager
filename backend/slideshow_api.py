@@ -12,12 +12,13 @@ import sys
 from controllers.controller import app, initialize_app
 
 # Import service layer for configuration
-from services.service import config, logger, stop_scheduler, stop_slideshow
+from services.service import config, logger, stop_ble_peripheral, stop_scheduler, stop_slideshow
 
 
 def signal_handler(sig, frame):
     """Handle shutdown signals"""
     logger.info("\nReceived signal %d, shutting down...", sig)
+    stop_ble_peripheral()
     stop_scheduler()
     stop_slideshow()
     logger.info("Pi Display Manager Flask service stopped")

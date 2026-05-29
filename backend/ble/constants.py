@@ -1,0 +1,6 @@
+"""Shared BLE constants for peripheral and central roles."""
+
+BLE_DEVICE_NAME = "PiDisplayManager"
+BLE_SERVICE_UUID = "12345678-1234-5678-1234-56789abcdef0"
+BLE_WRITE_CHAR_UUID = "12345678-1234-5678-1234-56789abcdef1"
+BLE_NOTIFY_CHAR_UUID = "12345678-1234-5678-1234-56789abcdef2"

@@ -509,6 +509,156 @@ sudo systemctl daemon-reload
 - GIF (.gif)
 - BMP (.bmp)
 
+## BLE GATT Text Communication (Pi <-> macOS)
+
+This project now includes a BLE GATT bidirectional text channel using modern Python BLE libraries:
+
+- Pi peripheral/server: `bless` (GATT server on Linux/BlueZ)
+- macOS central/client: `bleak` (GATT client)
+
+The BLE service is started automatically inside the existing `pi-slideshow` systemd service.
+
+### BLE Architecture
+
+- Device name: `PiDisplayManager`
+- Service UUID: `12345678-1234-5678-1234-56789abcdef0`
+- Write characteristic (Mac -> Pi): `12345678-1234-5678-1234-56789abcdef1`
+- Notify characteristic (Pi -> Mac): `12345678-1234-5678-1234-56789abcdef2`
+
+Flow:
+
+1. Pi advertises custom BLE service UUID.
+2. macOS scans and connects as central.
+3. macOS writes UTF-8 command text to write characteristic.
+4. Pi decodes command, logs it, prints it to console, and optionally sends response via notify characteristic.
+5. macOS displays notifications in terminal.
+
+### Installed Files
+
+- Pi peripheral implementation: `backend/ble/peripheral.py`
+- Standalone Pi BLE server: `backend/ble/pi_server.py`
+- macOS BLE client: `backend/ble/macos_client.py`
+- Shared UUID constants: `backend/ble/constants.py`
+
+### Pi Setup (Raspberry Pi OS Lite)
+
+Use your existing virtual environment and service:
+
+```bash
+cd ~/pi-display-manager
+./venv/bin/pip install -r requirements.txt
+```
+
+Enable Bluetooth stack and adapter:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y bluez bluetooth
+sudo systemctl enable --now bluetooth
+sudo rfkill unblock bluetooth
+sudo hciconfig hci0 up
+```
+
+Restart your existing service:
+
+```bash
+sudo systemctl restart pi-slideshow
+sudo systemctl status pi-slideshow
+```
+
+BLE startup and message logs are written to `slideshow.log`.
+
+### macOS Setup
+
+Create or use a Python 3.11+ virtual environment on macOS, then install client dependency:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install bleak
+```
+
+Run the client from this repository:
+
+```bash
+python3 backend/ble/macos_client.py
+```
+
+Optional arguments:
+
+```bash
+python3 backend/ble/macos_client.py --device-name PiDisplayManager --scan-timeout 15 --log-level DEBUG
+```
+
+### Supported BLE Commands
+
+Send these from the macOS client prompt:
+
+- `ping`
+- `status`
+- `start <playlist_id>`
+- `stop`
+- `default-start`
+
+The Pi responds through notifications (for example, status JSON or command ACK/ERROR messages).
+
+### Standalone Pi BLE Server (Optional)
+
+If you want BLE-only testing outside Flask/systemd:
+
+```bash
+cd ~/pi-display-manager
+./venv/bin/python backend/ble/pi_server.py
+```
+
+## BLE Troubleshooting
+
+### 1. Device not discovered from macOS
+
+- Verify Pi service is running: `sudo systemctl status pi-slideshow`
+- Verify adapter is up: `hciconfig hci0`
+- Ensure Bluetooth is not blocked: `rfkill list`
+- Move devices closer and retry scan.
+
+### 2. macOS does not prompt for Bluetooth permission
+
+- First scan attempt must happen from a terminal app with BLE entitlement prompts.
+- Go to `System Settings -> Privacy & Security -> Bluetooth` and allow your terminal app (Terminal/iTerm).
+- Restart terminal after permission change.
+
+### 3. BLE connection drops or reconnect loop
+
+- Keep the Pi powered and within range.
+- Check `slideshow.log` for disconnect/reconnect messages.
+- Restart adapter on Pi if needed:
+
+```bash
+sudo systemctl restart bluetooth
+sudo hciconfig hci0 reset
+```
+
+### 4. Writes succeed but no notifications appear
+
+- Confirm macOS client is subscribed (client logs show subscription).
+- Use short UTF-8 payloads for notifications.
+- Verify UUIDs match exactly on both sides.
+
+### 5. Service starts but BLE does not initialize
+
+- Reinstall Python deps inside the same venv used by systemd:
+
+```bash
+cd ~/pi-display-manager
+./venv/bin/pip install --upgrade pip
+./venv/bin/pip install -r requirements.txt
+sudo systemctl restart pi-slideshow
+```
+
+### 6. Log/debug output location
+
+- Application + BLE logs: `slideshow.log` in repo root.
+- Service logs: `sudo journalctl -u pi-slideshow -f`
+
 ## License
 
 MIT License - Feel free to use and modify as needed.

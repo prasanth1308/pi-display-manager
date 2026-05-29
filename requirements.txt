@@ -1,6 +1,6 @@
 # Pi Display Manager - Python Requirements
 # 
-# Python Version Required: 3.7+
+# Python Version Required: 3.11+
 #
 # Python Packages (install via pip):
 # Using Flask (lightweight, no Rust compilation)
@@ -8,6 +8,8 @@ Flask==2.3.0
 yt-dlp>=2023.3.4
 Pillow>=9.0.0
 pdf2image>=1.16.0
+bleak>=0.22.0
+bless>=0.2.6
 
 # Standard library modules used:
 # - os, json, subprocess, signal, sys, logging

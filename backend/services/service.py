@@ -13,6 +13,7 @@ import threading
 import time
 import uuid
 import tempfile
+import shlex
 from datetime import datetime
 from pathlib import Path
 import yt_dlp
@@ -28,6 +29,7 @@ current_playlist = None
 download_status = {}  # Track video download status
 downscale_status = {}  # Track video downscaling progress
 logger = None
+ble_peripheral = None
 BASE_DIR = Path(__file__).parent.parent.parent
 DATA_DIR = BASE_DIR / "data"
 PLAYLISTS_DIR = DATA_DIR / "playlists"
@@ -69,7 +71,7 @@ def _find_font():
 def setup_logging():
     """Configure logging to file and console"""
     global logger
-    log_file = BASE_DIR / "slideshow_api.log"
+    log_file = BASE_DIR / "slideshow.log"
 
     logging.basicConfig(
         level=logging.INFO,
@@ -105,11 +107,25 @@ def load_config():
         config = {
             "api_port": 80,
             "delay": 5,
-            "framebuffer": "/dev/fb0"
+            "framebuffer": "/dev/fb0",
+            "ble": {
+                "enabled": True,
+                "device_name": "PiDisplayManager",
+                "service_uuid": "12345678-1234-5678-1234-56789abcdef0",
+                "write_char_uuid": "12345678-1234-5678-1234-56789abcdef1",
+                "notify_char_uuid": "12345678-1234-5678-1234-56789abcdef2"
+            }
         }
     except json.JSONDecodeError as e:
         logger.error("Invalid JSON in config: %s", e)
         sys.exit(1)
+
+    ble_cfg = config.setdefault("ble", {})
+    ble_cfg.setdefault("enabled", True)
+    ble_cfg.setdefault("device_name", "PiDisplayManager")
+    ble_cfg.setdefault("service_uuid", "12345678-1234-5678-1234-56789abcdef0")
+    ble_cfg.setdefault("write_char_uuid", "12345678-1234-5678-1234-56789abcdef1")
+    ble_cfg.setdefault("notify_char_uuid", "12345678-1234-5678-1234-56789abcdef2")
 
 
 def load_playlists_db():
@@ -635,6 +651,7 @@ def get_status():
     
     return {
         "running": slideshow_process is not None or video_process is not None,
+        "ble_running": bool(ble_peripheral and ble_peripheral.running),
         "current_playlist": current_playlist,
         "active_playlist": active_playlist_id,
         "image_count": image_count,
@@ -642,6 +659,95 @@ def get_status():
         "framebuffer": config.get("framebuffer"),
         "total_playlists": len(playlists_db.get("playlists", {}))
     }
+
+
+def _handle_ble_command(command: str):
+    """Handle BLE commands received from a central device."""
+    if not command:
+        return "ERROR empty command"
+
+    parts = shlex.split(command)
+    if not parts:
+        return "ERROR empty command"
+
+    op = parts[0].lower()
+
+    if op == "ping":
+        return "PONG"
+
+    if op == "status":
+        status = get_status()
+        slim = {
+            "running": status.get("running"),
+            "current_playlist": status.get("current_playlist"),
+            "active_playlist": status.get("active_playlist"),
+            "image_count": status.get("image_count"),
+        }
+        return json.dumps(slim)
+
+    if op == "stop":
+        result = stop_slideshow()
+        return f"STOP {result.get('status')} {result.get('message', '')}".strip()
+
+    if op == "start":
+        if len(parts) < 2:
+            return "ERROR usage: start <playlist_id>"
+        playlist_id = parts[1]
+        result = start_slideshow(playlist_id)
+        return f"START {result.get('status')} {result.get('message', '')}".strip()
+
+    if op == "default-start":
+        started = start_default_playlist()
+        return "DEFAULT_START success" if started else "DEFAULT_START error"
+
+    return f"ACK {command}"
+
+
+def start_ble_peripheral():
+    """Start BLE GATT peripheral if enabled in config."""
+    global ble_peripheral
+
+    ble_cfg = (config or {}).get("ble", {})
+    if not ble_cfg.get("enabled", True):
+        logger.info("BLE peripheral disabled in config")
+        return False
+
+    if ble_peripheral and ble_peripheral.running:
+        return True
+
+    try:
+        from ble.peripheral import BleConfig, PiBleGattPeripheral
+    except Exception as e:
+        logger.error("BLE import failed: %s", e)
+        return False
+
+    peripheral_config = BleConfig(
+        device_name=ble_cfg.get("device_name", "PiDisplayManager"),
+        service_uuid=ble_cfg.get("service_uuid", "12345678-1234-5678-1234-56789abcdef0"),
+        write_char_uuid=ble_cfg.get("write_char_uuid", "12345678-1234-5678-1234-56789abcdef1"),
+        notify_char_uuid=ble_cfg.get("notify_char_uuid", "12345678-1234-5678-1234-56789abcdef2"),
+    )
+
+    ble_peripheral = PiBleGattPeripheral(logger=logger, config=peripheral_config, handler=_handle_ble_command)
+    started = ble_peripheral.start()
+    if started:
+        logger.info("BLE peripheral initialized")
+    return started
+
+
+def stop_ble_peripheral():
+    """Stop BLE GATT peripheral if running."""
+    global ble_peripheral
+
+    if ble_peripheral is None:
+        return
+
+    try:
+        ble_peripheral.stop()
+    except Exception as e:
+        logger.warning("Failed to stop BLE peripheral cleanly: %s", e)
+    finally:
+        ble_peripheral = None
 
 
 def create_playlist(name, playlist_type="image", delay=5):
