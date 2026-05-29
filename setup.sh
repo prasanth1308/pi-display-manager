@@ -58,6 +58,35 @@ else
     echo "python3-venv already installed"
 fi
 
+# Install Bluetooth dependencies
+echo "[7b] Installing Bluetooth dependencies..."
+sudo apt-get install -y bluetooth bluez libbluetooth-dev python3-dev
+
+# Ensure the bluetooth service is enabled and running
+sudo systemctl enable bluetooth
+sudo systemctl start bluetooth
+
+# Install pybluez Python library
+echo "Installing pybluez..."
+"$SCRIPT_DIR/venv/bin/pip" install pybluez 2>/dev/null || pip3 install pybluez
+
+# Configure Bluetooth: power on, make discoverable and pairable
+echo "Configuring Bluetooth (power on, discoverable, pairable)..."
+bluetoothctl power on
+bluetoothctl agent on
+bluetoothctl default-agent
+bluetoothctl discoverable on
+bluetoothctl pairable on
+
+echo ""
+echo "----------------------------------------------------------"
+echo "  Bluetooth is now discoverable and pairable."
+echo "  Pair this Pi from your client device, then re-run:"
+echo "    bluetoothctl discoverable off   # disable after pairing"
+echo "----------------------------------------------------------"
+echo ""
+echo "Bluetooth setup complete"
+
 # Set up directory structure (moved before venv creation)
 echo "[8/10] Setting up directory structure..."
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"

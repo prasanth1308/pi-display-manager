@@ -13,6 +13,7 @@ from controllers.controller import app, initialize_app
 
 # Import service layer for configuration
 from services.service import config, logger, stop_scheduler, stop_slideshow
+from services.bluetooth import start_bluetooth_service, stop_bluetooth_service
 
 
 def signal_handler(sig, frame):
@@ -20,6 +21,7 @@ def signal_handler(sig, frame):
     logger.info("\nReceived signal %d, shutting down...", sig)
     stop_scheduler()
     stop_slideshow()
+    stop_bluetooth_service()
     logger.info("Pi Display Manager Flask service stopped")
     sys.exit(0)
 
@@ -40,6 +42,9 @@ if __name__ == "__main__":
         print("=" * 70)
         print(f"📡 API Server: http://localhost:{port}")
         print("=" * 70)
+
+        # Start Bluetooth RFCOMM service
+        start_bluetooth_service()
         
         app.run(
             host="0.0.0.0",
