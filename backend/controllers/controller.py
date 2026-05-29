@@ -12,40 +12,75 @@ import threading
 # Import authentication
 import sys
 from pathlib import Path as _Path
-sys.path.insert(0, str(_Path(__file__).parent.parent))
+_BACKEND_DIR = _Path(__file__).resolve().parent.parent
+_REPO_ROOT_DIR = _BACKEND_DIR.parent
 
-from services.auth import authenticate_user, validate_session, destroy_session
+if str(_BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(_BACKEND_DIR))
+if str(_REPO_ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT_DIR))
 
-# Import service layer module
-import services.service as service
+try:
+    from services.auth import authenticate_user, validate_session, destroy_session
+    import services.service as service
+    from services.service import (
+        # Core functions
+        setup_logging, ensure_directories, load_config, load_playlists_db,
+        
+        # Service functions
+        get_status, start_slideshow, stop_slideshow, clear_framebuffer,
+        list_playlists, create_playlist, update_playlist, delete_playlist,
+        set_default_playlist, clear_default_playlist, start_default_playlist,
+        get_playlist_images_list, get_playlist_videos_list,
+        upload_image, delete_image, delete_video,
+        skip_image, unskip_image,
+        parse_multipart_form_data, parse_multipart_form_data_streaming,
+        download_youtube_video, downscale_video_to_1080p,
+        convert_pdf_to_images, convert_ppt_to_images,
+        start_video_playback, stop_video_playback, get_playlist_videos, save_playlists_db,
+        
+        # Idle screen
+        get_idle_config, save_idle_config, start_idle_screen, stop_idle_screen,
+        
+        # Scheduler
+        load_schedules_db, list_schedules, get_schedule, create_schedule,
+        update_schedule, delete_schedule, stop_scheduler, start_scheduler,
 
-# Import service functions directly
-from services.service import (
-    # Core functions
-    setup_logging, ensure_directories, load_config, load_playlists_db,
-    
-    # Service functions
-    get_status, start_slideshow, stop_slideshow, clear_framebuffer,
-    list_playlists, create_playlist, update_playlist, delete_playlist,
-    set_default_playlist, clear_default_playlist, start_default_playlist,
-    get_playlist_images_list, get_playlist_videos_list,
-    upload_image, delete_image, delete_video,
-    skip_image, unskip_image,
-    parse_multipart_form_data, parse_multipart_form_data_streaming,
-    download_youtube_video, downscale_video_to_1080p,
-    convert_pdf_to_images, convert_ppt_to_images,
-    start_video_playback, stop_video_playback, get_playlist_videos, save_playlists_db,
-    
-    # Idle screen
-    get_idle_config, save_idle_config, start_idle_screen, stop_idle_screen,
-    
-    # Scheduler
-    load_schedules_db, list_schedules, get_schedule, create_schedule,
-    update_schedule, delete_schedule, stop_scheduler, start_scheduler,
+        # BLE
+        start_ble_peripheral,
+    )
+except ModuleNotFoundError as exc:
+    if exc.name not in {"services", "services.auth", "services.service"}:
+        raise
 
-    # BLE
-    start_ble_peripheral,
-)
+    from backend.services.auth import authenticate_user, validate_session, destroy_session
+    import backend.services.service as service
+    from backend.services.service import (
+        # Core functions
+        setup_logging, ensure_directories, load_config, load_playlists_db,
+        
+        # Service functions
+        get_status, start_slideshow, stop_slideshow, clear_framebuffer,
+        list_playlists, create_playlist, update_playlist, delete_playlist,
+        set_default_playlist, clear_default_playlist, start_default_playlist,
+        get_playlist_images_list, get_playlist_videos_list,
+        upload_image, delete_image, delete_video,
+        skip_image, unskip_image,
+        parse_multipart_form_data, parse_multipart_form_data_streaming,
+        download_youtube_video, downscale_video_to_1080p,
+        convert_pdf_to_images, convert_ppt_to_images,
+        start_video_playback, stop_video_playback, get_playlist_videos, save_playlists_db,
+        
+        # Idle screen
+        get_idle_config, save_idle_config, start_idle_screen, stop_idle_screen,
+        
+        # Scheduler
+        load_schedules_db, list_schedules, get_schedule, create_schedule,
+        update_schedule, delete_schedule, stop_scheduler, start_scheduler,
+
+        # BLE
+        start_ble_peripheral,
+    )
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Initialize Flask App
