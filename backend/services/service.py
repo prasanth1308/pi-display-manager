@@ -73,15 +73,20 @@ def setup_logging():
     global logger
     log_file = BASE_DIR / "slideshow.log"
 
+    # Ensure the log path exists before attaching file handler.
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s',
         handlers=[
-            logging.FileHandler(log_file),
+            logging.FileHandler(log_file, encoding="utf-8"),
             logging.StreamHandler()
-        ]
+        ],
+        force=True,
     )
-    logger = logging.getLogger(__name__)
+    logger = logging.getLogger("pi_display_manager")
+    logger.info("Logging initialized: %s", log_file)
 
 
 def ensure_directories():
