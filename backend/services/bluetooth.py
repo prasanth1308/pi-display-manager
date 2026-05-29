@@ -262,24 +262,16 @@ def _server_loop():
         )
         return
 
-    server_sock = bluetooth.BluetoothSocket(bluetooth.RFCOMM)
-    server_sock.bind(("", RFCOMM_PORT))
-    server_sock.listen(1)
-
-    bluetooth.advertise_service(
-        server_sock,
-        SERVICE_NAME,
-        service_id=SERVICE_UUID,
-        service_classes=[SERVICE_UUID, bluetooth.SERIAL_PORT_CLASS],
-        profiles=[bluetooth.SERIAL_PORT_PROFILE],
-    )
-
-    logger.info(
-        "Bluetooth RFCOMM server listening on channel %d (UUID: %s)",
-        RFCOMM_PORT, SERVICE_UUID,
-    )
-
     try:
+        server_sock = bluetooth.BluetoothSocket(bluetooth.RFCOMM)
+        server_sock.bind(("", RFCOMM_PORT))
+        server_sock.listen(1)
+        logger.info(
+            "Bluetooth RFCOMM server listening on channel %d (service: %s)",
+            RFCOMM_PORT,
+            SERVICE_NAME,
+        )
+
         while not _stop_event.is_set():
             server_sock.settimeout(2.0)
             try:
@@ -292,8 +284,13 @@ def _server_loop():
                 daemon=True,
             )
             t.start()
+    except Exception:
+        logger.exception("Bluetooth RFCOMM server startup/runtime failed")
     finally:
-        server_sock.close()
+        try:
+            server_sock.close()
+        except Exception:
+            pass
         logger.info("Bluetooth RFCOMM server stopped")
 
 
