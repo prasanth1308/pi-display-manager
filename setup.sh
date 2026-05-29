@@ -63,6 +63,11 @@ fi
 # Install Bluetooth dependencies
 echo "[7b] Installing Bluetooth dependencies..."
 sudo apt-get install -y bluetooth bluez libbluetooth-dev python3-dev
+if apt-cache show python3-bluez >/dev/null 2>&1; then
+    sudo apt-get install -y python3-bluez
+else
+    echo "Warning: python3-bluez package not found in apt repositories"
+fi
 
 # Ensure the bluetooth service is enabled and running
 sudo systemctl enable bluetooth
@@ -107,8 +112,8 @@ echo "  - $SCRIPT_DIR/frontend"
 # Create virtual environment
 echo "[9/10] Creating Python virtual environment..."
 if [ ! -d "$SCRIPT_DIR/venv" ]; then
-    python3 -m venv "$SCRIPT_DIR/venv"
-    echo "Virtual environment created at $SCRIPT_DIR/venv"
+    python3 -m venv --system-site-packages "$SCRIPT_DIR/venv"
+    echo "Virtual environment created at $SCRIPT_DIR/venv (with system site packages)"
 else
     echo "Virtual environment already exists"
 fi
@@ -124,10 +129,16 @@ else
     "$SCRIPT_DIR/venv/bin/pip" install --upgrade yt-dlp
 fi
 
-# Install pybluez into the existing venv
-echo "Installing pybluez into venv..."
-"$SCRIPT_DIR/venv/bin/pip" install pybluez
-echo "pybluez installed"
+# Verify Bluetooth import from the same interpreter used by the service
+echo "Verifying Bluetooth Python module in project venv..."
+if "$SCRIPT_DIR/venv/bin/python3" -c "import bluetooth; print(bluetooth.__file__)"; then
+    echo "Bluetooth module is available in the project venv"
+else
+    echo "ERROR: 'import bluetooth' failed in $SCRIPT_DIR/venv/bin/python3"
+    echo "If the venv already existed, remove it and rerun setup so it can be recreated with system site packages:"
+    echo "  rm -rf $SCRIPT_DIR/venv"
+    exit 1
+fi
 
 # Make scripts executable
 chmod +x "$SCRIPT_DIR/backend/slideshow_api.py"
