@@ -8,7 +8,6 @@ Flask==2.3.0
 yt-dlp>=2023.3.4
 Pillow>=9.0.0
 pdf2image>=1.16.0
-pybluez>=0.23
 
 # Standard library modules used:
 # - os, json, subprocess, signal, sys, logging
@@ -19,5 +18,6 @@ pybluez>=0.23
 # - fbi (framebuffer image viewer): sudo apt-get install fbi
 # - vlc (video player): sudo apt-get install vlc
 # - python3-pip: sudo apt-get install python3-pip
+# - python3-bluez: sudo apt-get install python3-bluez
 # - poppler-utils (for PDF conversion): sudo apt-get install poppler-utils
 # - libreoffice (for PowerPoint conversion): sudo apt-get install libreoffice
