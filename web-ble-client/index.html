@@ -57,6 +57,51 @@
       </div>
     </section>
 
+    <section class="card" id="wifi-section">
+      <h2>Wi-Fi</h2>
+
+      <div class="wifi-toolbar">
+        <button id="wifiListBtn" class="quick" disabled>Scan networks</button>
+        <span id="connectedSsid" class="connected-badge" style="display:none"></span>
+      </div>
+
+      <!-- Network list -->
+      <div id="wifiList" class="wifi-list" style="display:none"></div>
+
+      <!-- Connect form -->
+      <details id="wifiConnectDetails" class="wifi-details">
+        <summary>Connect to a network</summary>
+        <div class="wifi-form">
+          <label>
+            SSID
+            <input id="wifiSsidInput" type="text" placeholder="Network name" />
+          </label>
+          <label>
+            Password
+            <div class="pw-wrap">
+              <input id="wifiPasswordInput" type="password" placeholder="Password" />
+              <button type="button" id="wifiTogglePw" class="icon-btn" title="Show/hide password">👁️</button>
+            </div>
+          </label>
+          <button id="wifiConnectBtn" class="quick" disabled>Connect</button>
+        </div>
+      </details>
+
+      <!-- Forget form -->
+      <details id="wifiForgetDetails" class="wifi-details">
+        <summary>Forget a saved network</summary>
+        <div class="wifi-form">
+          <label>
+            SSID to forget
+            <input id="wifiForgetInput" type="text" placeholder="Saved network name" />
+          </label>
+          <button id="wifiForgetBtn" class="quick" disabled>Forget</button>
+        </div>
+      </details>
+
+      <p id="wifiStatus" class="wifi-status"></p>
+    </section>
+
     <section class="card">
       <h2>Logs</h2>
       <div class="log-actions">

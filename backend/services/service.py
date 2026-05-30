@@ -775,7 +775,152 @@ def _handle_ble_command(command: str):
         started = start_default_playlist()
         return "DEFAULT_START success" if started else "DEFAULT_START error"
 
+    if op == "wifi-list":
+        return _wifi_list()
+
+    if op == "wifi-connect":
+        if len(parts) < 3:
+            return "ERROR usage: wifi-connect <ssid> <password>"
+        ssid, password = parts[1], parts[2]
+        return _wifi_connect(ssid, password)
+
+    if op == "wifi-forget":
+        if len(parts) < 2:
+            return "ERROR usage: wifi-forget <ssid>"
+        return _wifi_forget(parts[1])
+
     return f"ACK {command}"
+
+
+# ── Wi-Fi helpers ─────────────────────────────────────────────────────────────
+
+def _wifi_list() -> str:
+    """Return a JSON list of visible networks and mark the connected one."""
+    try:
+        # Connected SSID
+        connected_ssid = ""
+        try:
+            r = subprocess.run(
+                ["iwgetid", "-r"],
+                capture_output=True, text=True, timeout=5
+            )
+            connected_ssid = r.stdout.strip()
+        except Exception:
+            pass
+
+        # Scan for networks
+        scan = subprocess.run(
+            ["sudo", "iwlist", "wlan0", "scan"],
+            capture_output=True, text=True, timeout=15
+        )
+        networks = {}
+        current_ssid = None
+        current_signal = None
+        for line in scan.stdout.splitlines():
+            line = line.strip()
+            if line.startswith("ESSID:"):
+                raw = line[6:].strip().strip('"')
+                current_ssid = raw
+            if "Signal level=" in line:
+                try:
+                    sig_part = [p for p in line.split() if "Signal" in p or "level=" in p]
+                    level_str = "".join(sig_part).split("level=")[-1].split(" ")[0].split("/")[0]
+                    current_signal = int(float(level_str))
+                except Exception:
+                    current_signal = None
+            if current_ssid is not None:
+                key = current_ssid
+                if key and key not in networks:
+                    networks[key] = {
+                        "ssid": key,
+                        "signal": current_signal,
+                        "connected": key == connected_ssid,
+                    }
+                current_ssid = None
+                current_signal = None
+
+        result = sorted(networks.values(), key=lambda n: n.get("signal") or -100, reverse=True)
+        return "WIFI_LIST " + json.dumps(result)
+    except Exception as exc:
+        logger.error("wifi-list failed: %s", exc)
+        return f"ERROR wifi-list failed: {exc}"
+
+
+def _wifi_connect(ssid: str, password: str) -> str:
+    """Connect to a Wi-Fi network using nmcli."""
+    try:
+        r = subprocess.run(
+            ["sudo", "nmcli", "device", "wifi", "connect", ssid, "password", password],
+            capture_output=True, text=True, timeout=30
+        )
+        if r.returncode == 0:
+            return f"WIFI_CONNECTED {ssid}"
+        return f"ERROR {r.stderr.strip() or r.stdout.strip()}"
+    except FileNotFoundError:
+        # nmcli not available — fall back to wpa_supplicant
+        try:
+            conf_block = (
+                f'\nnetwork={{\n'
+                f'    ssid="{ssid}"\n'
+                f'    psk="{password}"\n'
+                f'}}\n'
+            )
+            wpa_conf = Path("/etc/wpa_supplicant/wpa_supplicant.conf")
+            with open(wpa_conf, "a") as f:
+                f.write(conf_block)
+            subprocess.run(["wpa_cli", "-i", "wlan0", "reconfigure"], capture_output=True, timeout=10)
+            return f"WIFI_CONNECTED {ssid}"
+        except Exception as exc2:
+            logger.error("wifi-connect fallback failed: %s", exc2)
+            return f"ERROR wifi-connect failed: {exc2}"
+    except Exception as exc:
+        logger.error("wifi-connect failed: %s", exc)
+        return f"ERROR wifi-connect failed: {exc}"
+
+
+def _wifi_forget(ssid: str) -> str:
+    """Forget (delete) a saved Wi-Fi connection using nmcli."""
+    try:
+        # Find connection name matching the SSID
+        r = subprocess.run(
+            ["sudo", "nmcli", "-t", "-f", "NAME,TYPE", "connection", "show"],
+            capture_output=True, text=True, timeout=10
+        )
+        conn_name = None
+        for line in r.stdout.splitlines():
+            parts = line.split(":")
+            if len(parts) >= 2 and parts[1].strip() == "802-11-wireless":
+                if parts[0].strip() == ssid:
+                    conn_name = parts[0].strip()
+                    break
+        if conn_name is None:
+            conn_name = ssid  # Try using SSID directly as connection name
+
+        d = subprocess.run(
+            ["sudo", "nmcli", "connection", "delete", conn_name],
+            capture_output=True, text=True, timeout=10
+        )
+        if d.returncode == 0:
+            return f"WIFI_FORGOTTEN {ssid}"
+        return f"ERROR {d.stderr.strip() or d.stdout.strip()}"
+    except FileNotFoundError:
+        # nmcli not available — remove from wpa_supplicant.conf
+        try:
+            wpa_conf = Path("/etc/wpa_supplicant/wpa_supplicant.conf")
+            if wpa_conf.exists():
+                content = wpa_conf.read_text()
+                import re
+                pattern = r'network\s*=\s*\{[^}]*ssid\s*=\s*"' + re.escape(ssid) + r'"[^}]*\}'
+                new_content = re.sub(pattern, "", content, flags=re.DOTALL)
+                wpa_conf.write_text(new_content)
+                subprocess.run(["wpa_cli", "-i", "wlan0", "reconfigure"], capture_output=True, timeout=10)
+            return f"WIFI_FORGOTTEN {ssid}"
+        except Exception as exc2:
+            logger.error("wifi-forget fallback failed: %s", exc2)
+            return f"ERROR wifi-forget failed: {exc2}"
+    except Exception as exc:
+        logger.error("wifi-forget failed: %s", exc)
+        return f"ERROR wifi-forget failed: {exc}"
 
 
 def start_ble_peripheral():
