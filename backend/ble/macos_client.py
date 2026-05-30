@@ -153,16 +153,32 @@ class MacBleGattClient:
             return
 
         payload = command.encode("utf-8")
-        try:
-            await asyncio.wait_for(
-                self._client.write_gatt_char(self._write_char_uuid, payload, response=True),
-                timeout=4.0,
-            )
-            self._logger.info("TX: %s", command)
-        except asyncio.TimeoutError:
-            self._logger.warning("Write timeout for command: %s", command)
-        except Exception as exc:
-            self._logger.error("Write failed: %s", exc)
+        self._logger.info("Sending command: %s", command)
+
+        # Some BLE stacks/peripherals prefer one write mode over the other.
+        # Try write-with-response first, then fallback to write-without-response.
+        for response_mode in (True, False):
+            try:
+                await asyncio.wait_for(
+                    self._client.write_gatt_char(self._write_char_uuid, payload, response=response_mode),
+                    timeout=4.0,
+                )
+                self._logger.info("TX (%s): %s", "response" if response_mode else "no-response", command)
+                return
+            except asyncio.TimeoutError:
+                self._logger.warning(
+                    "Write timeout (%s) for command: %s",
+                    "response" if response_mode else "no-response",
+                    command,
+                )
+            except Exception as exc:
+                self._logger.warning(
+                    "Write failed (%s): %s",
+                    "response" if response_mode else "no-response",
+                    exc,
+                )
+
+        self._logger.error("Command send failed in both write modes: %s", command)
 
     def _on_disconnected(self, _client):
         self._logger.warning("BLE disconnected callback received")
