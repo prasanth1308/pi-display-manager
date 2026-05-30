@@ -11,6 +11,7 @@ const wifiResponse = {
     this.buffer += (this.buffer ? "\n" : "") + message;
     if (
       this.buffer.startsWith("WIFI_LIST ") ||
+      this.buffer.startsWith("WIFI_LIST_PAGE ") ||
       this.buffer.startsWith("WIFI_CONNECTED ") ||
       this.buffer.startsWith("WIFI_FORGOTTEN ") ||
       this.buffer.startsWith("ERROR ")
@@ -215,6 +216,7 @@ function onNotification(event) {
   // Route Wi-Fi responses to the accumulator first
   if (
     message.startsWith("WIFI_LIST ") ||
+    message.startsWith("WIFI_LIST_PAGE ") ||
     message.startsWith("WIFI_CONNECTED ") ||
     message.startsWith("WIFI_FORGOTTEN ") ||
     (wifiResponse.resolve && message.startsWith("ERROR "))
@@ -347,14 +349,39 @@ el.wifiListBtn.addEventListener("click", async () => {
   setWifiStatus("Scanning\u2026");
   el.wifiListBtn.disabled = true;
   try {
-    const reply = await wifiResponse.send("wifi-list", 20000);
-    if (reply.startsWith("WIFI_LIST ")) {
-      const networks = JSON.parse(reply.slice("WIFI_LIST ".length));
-      renderNetworks(networks);
-      setWifiStatus(networks.length + " network(s) found");
-    } else {
+    const networks = [];
+
+    let reply = await wifiResponse.send("wifi-list", 20000);
+    if (!reply.startsWith("WIFI_LIST_PAGE ")) {
       setWifiStatus(reply, true);
+      return;
     }
+
+    while (reply.startsWith("WIFI_LIST_PAGE ")) {
+      const payload = JSON.parse(reply.slice("WIFI_LIST_PAGE ".length));
+      const items = Array.isArray(payload.i) ? payload.i : [];
+
+      for (const item of items) {
+        networks.push({
+          ssid: item.s || "",
+          signal: item.g,
+          connected: !!item.c,
+        });
+      }
+
+      if (payload.d) {
+        break;
+      }
+
+      reply = await wifiResponse.send(`wifi-list-page ${payload.n}`, 12000);
+      if (reply.startsWith("ERROR ")) {
+        setWifiStatus(reply, true);
+        return;
+      }
+    }
+
+    renderNetworks(networks);
+    setWifiStatus(networks.length + " network(s) found");
   } catch (e) {
     setWifiStatus(e.message, true);
   } finally {

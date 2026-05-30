@@ -28,6 +28,7 @@ playlists_db = {}
 current_playlist = None
 download_status = {}  # Track video download status
 downscale_status = {}  # Track video downscaling progress
+wifi_scan_cache = {"items": [], "created_at": 0.0}  # Cached Wi-Fi scan for BLE paging
 logger = None
 ble_peripheral = None
 BASE_DIR = Path(__file__).parent.parent.parent
@@ -778,6 +779,15 @@ def _handle_ble_command(command: str):
     if op == "wifi-list":
         return _wifi_list()
 
+    if op == "wifi-list-page":
+        if len(parts) < 2:
+            return "ERROR usage: wifi-list-page <next_offset>"
+        try:
+            next_offset = int(parts[1])
+        except ValueError:
+            return "ERROR wifi-list-page offset must be integer"
+        return _wifi_list_page(next_offset)
+
     if op == "wifi-connect":
         if len(parts) < 3:
             return "ERROR usage: wifi-connect <ssid> <password>"
@@ -795,55 +805,116 @@ def _handle_ble_command(command: str):
 # ── Wi-Fi helpers ─────────────────────────────────────────────────────────────
 
 def _wifi_list() -> str:
-    """Return a JSON list of visible networks and mark the connected one."""
+    """Start a fresh Wi-Fi scan and return the first BLE-sized page."""
     try:
-        # Connected SSID
-        connected_ssid = ""
-        try:
-            r = subprocess.run(
-                ["iwgetid", "-r"],
-                capture_output=True, text=True, timeout=5
-            )
-            connected_ssid = r.stdout.strip()
-        except Exception:
-            pass
-
-        # Scan for networks
-        scan = subprocess.run(
-            ["sudo", "iwlist", "wlan0", "scan"],
-            capture_output=True, text=True, timeout=15
-        )
-        networks = {}
-        current_ssid = None
-        current_signal = None
-        for line in scan.stdout.splitlines():
-            line = line.strip()
-            if line.startswith("ESSID:"):
-                raw = line[6:].strip().strip('"')
-                current_ssid = raw
-            if "Signal level=" in line:
-                try:
-                    sig_part = [p for p in line.split() if "Signal" in p or "level=" in p]
-                    level_str = "".join(sig_part).split("level=")[-1].split(" ")[0].split("/")[0]
-                    current_signal = int(float(level_str))
-                except Exception:
-                    current_signal = None
-            if current_ssid is not None:
-                key = current_ssid
-                if key and key not in networks:
-                    networks[key] = {
-                        "ssid": key,
-                        "signal": current_signal,
-                        "connected": key == connected_ssid,
-                    }
-                current_ssid = None
-                current_signal = None
-
-        result = sorted(networks.values(), key=lambda n: n.get("signal") or -100, reverse=True)
-        return "WIFI_LIST " + json.dumps(result)
+        items = _scan_wifi_networks()
+        wifi_scan_cache["items"] = items
+        wifi_scan_cache["created_at"] = time.time()
+        return _wifi_list_page(0)
     except Exception as exc:
         logger.error("wifi-list failed: %s", exc)
         return f"ERROR wifi-list failed: {exc}"
+
+
+def _wifi_list_page(offset: int) -> str:
+    """Return a BLE-sized page from the cached Wi-Fi scan result."""
+    items = wifi_scan_cache.get("items", [])
+    age = time.time() - float(wifi_scan_cache.get("created_at", 0.0))
+
+    if not items or age > 60:
+        return "ERROR wifi-list cache expired, run wifi-list first"
+
+    if offset < 0:
+        offset = 0
+    if offset >= len(items):
+        offset = len(items)
+
+    page = _build_wifi_page(items, offset)
+    return "WIFI_LIST_PAGE " + json.dumps(page, separators=(",", ":"))
+
+
+def _build_wifi_page(items, offset: int):
+    """
+    Build a compact Wi-Fi page sized for BLE notifications.
+    Keys are shortened to keep payload within max BLE message size.
+    """
+    total = len(items)
+    max_payload_chars = 150  # Keep under peripheral max payload (180 bytes) with prefix
+    page_items = []
+    next_offset = offset
+
+    for idx in range(offset, total):
+        raw = items[idx]
+        compact = {
+            "s": raw.get("ssid", ""),
+            "g": raw.get("signal"),
+            "c": bool(raw.get("connected", False)),
+        }
+        candidate = page_items + [compact]
+        probe = {
+            "o": offset,
+            "n": idx + 1,
+            "t": total,
+            "d": (idx + 1) >= total,
+            "i": candidate,
+        }
+        if len(json.dumps(probe, separators=(",", ":"))) > max_payload_chars:
+            break
+        page_items = candidate
+        next_offset = idx + 1
+
+    done = next_offset >= total
+    return {
+        "o": offset,
+        "n": next_offset,
+        "t": total,
+        "d": done,
+        "i": page_items,
+    }
+
+
+def _scan_wifi_networks():
+    """Scan visible Wi-Fi SSIDs and mark currently connected network."""
+    connected_ssid = ""
+    try:
+        r = subprocess.run(
+            ["iwgetid", "-r"],
+            capture_output=True, text=True, timeout=5
+        )
+        connected_ssid = r.stdout.strip()
+    except Exception:
+        pass
+
+    scan = subprocess.run(
+        ["sudo", "iwlist", "wlan0", "scan"],
+        capture_output=True, text=True, timeout=15
+    )
+    networks = {}
+    current_ssid = None
+    current_signal = None
+    for line in scan.stdout.splitlines():
+        line = line.strip()
+        if line.startswith("ESSID:"):
+            current_ssid = line[6:].strip().strip('"')
+        if "Signal level=" in line:
+            try:
+                sig_part = [p for p in line.split() if "Signal" in p or "level=" in p]
+                level_str = "".join(sig_part).split("level=")[-1].split(" ")[0].split("/")[0]
+                current_signal = int(float(level_str))
+            except Exception:
+                current_signal = None
+        if current_ssid is not None:
+            key = current_ssid
+            if key and key not in networks:
+                networks[key] = {
+                    "ssid": key,
+                    "signal": current_signal,
+                    "connected": key == connected_ssid,
+                }
+            current_ssid = None
+            current_signal = None
+
+    return sorted(networks.values(), key=lambda n: n.get("signal") or -100, reverse=True)
 
 
 def _wifi_connect(ssid: str, password: str) -> str:
