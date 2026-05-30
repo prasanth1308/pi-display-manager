@@ -13,8 +13,8 @@ ExecStartPre=/bin/sh -c 'TERM=linux setterm -cursor off > /dev/tty1 || true'
 ExecStart=/home/larokiaraj/pi-display-manager/venv/bin/python3 /home/larokiaraj/pi-display-manager/backend/slideshow_api.py
 Restart=always
 RestartSec=5
-StandardOutput=null
-StandardError=null
+StandardOutput=journal
+StandardError=journal
 ExecStopPost=/bin/systemctl unmask --runtime getty@tty1.service
 ExecStopPost=/bin/systemctl start getty@tty1.service
 

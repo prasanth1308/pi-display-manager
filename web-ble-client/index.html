@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pi BLE Web Client</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main class="app">
+    <header class="header">
+      <h1>Pi BLE Web Client</h1>
+      <p>Connect to PiDisplayManager over BLE GATT, send commands, and view notifications.</p>
+    </header>
+
+    <section class="card">
+      <h2>Connection</h2>
+      <div class="grid two">
+        <label>
+          Device name
+          <input id="deviceName" type="text" value="PiDisplayManager" />
+        </label>
+        <label>
+          Service UUID
+          <input id="serviceUuid" type="text" value="12345678-1234-5678-1234-56789abcdef0" />
+        </label>
+      </div>
+      <div class="grid two">
+        <label>
+          Write characteristic UUID
+          <input id="writeUuid" type="text" value="12345678-1234-5678-1234-56789abcdef1" />
+        </label>
+        <label>
+          Notify characteristic UUID
+          <input id="notifyUuid" type="text" value="12345678-1234-5678-1234-56789abcdef2" />
+        </label>
+      </div>
+      <div class="actions">
+        <button id="connectBtn">Connect</button>
+        <button id="disconnectBtn" disabled>Disconnect</button>
+      </div>
+      <p id="status" class="status">Disconnected</p>
+      <p class="hint">Web Bluetooth requires a user gesture and a compatible browser (Chrome/Edge over HTTPS or localhost).</p>
+    </section>
+
+    <section class="card">
+      <h2>Send Command</h2>
+      <div class="command-row">
+        <input id="commandInput" type="text" placeholder="Type command (e.g. ping, status, stop)" />
+        <button id="sendBtn" disabled>Send</button>
+      </div>
+      <div class="quick-actions">
+        <button data-cmd="ping" class="quick" disabled>ping</button>
+        <button data-cmd="status" class="quick" disabled>status</button>
+        <button data-cmd="stop" class="quick" disabled>stop</button>
+        <button data-cmd="default-start" class="quick" disabled>default-start</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Logs</h2>
+      <div class="log-actions">
+        <button id="clearLogsBtn">Clear</button>
+      </div>
+      <pre id="logs" class="logs"></pre>
+    </section>
+  </main>
+
+  <script src="./app.js"></script>
+</body>
+</html>

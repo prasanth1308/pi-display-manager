@@ -1,5 +1,12 @@
 {
   "api_port": 80,
   "delay": 5,
-  "framebuffer": "/dev/fb0"
+  "framebuffer": "/dev/fb0",
+  "ble": {
+    "enabled": true,
+    "device_name": "PiDisplayManager",
+    "service_uuid": "12345678-1234-5678-1234-56789abcdef0",
+    "write_char_uuid": "12345678-1234-5678-1234-56789abcdef1",
+    "notify_char_uuid": "12345678-1234-5678-1234-56789abcdef2"
+  }
 }
