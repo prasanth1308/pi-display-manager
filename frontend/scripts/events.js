@@ -11,6 +11,7 @@ const EventListeners = {
     // Playback controls
     DOM.playBtn.addEventListener("click", () => PlaybackControl.start());
     DOM.stopBtn.addEventListener("click", () => PlaybackControl.stop());
+    DOM.refreshDisplayBtn.addEventListener("click", () => PlaybackControl.refreshDisplay());
 
     // Playlist controls
     DOM.newPlaylistBtn.addEventListener("click", () =>

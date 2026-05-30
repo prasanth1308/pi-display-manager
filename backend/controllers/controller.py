@@ -33,7 +33,7 @@ from services.service import (
     setup_logging, ensure_directories, load_config, load_playlists_db,
     
     # Service functions
-    get_status, start_slideshow, stop_slideshow, clear_framebuffer,
+    get_status, start_slideshow, stop_slideshow, clear_framebuffer, refresh_display,
     list_playlists, create_playlist, update_playlist, delete_playlist,
     set_default_playlist, clear_default_playlist, start_default_playlist,
     get_playlist_images_list, get_playlist_videos_list,
@@ -640,6 +640,14 @@ def clear_display(user_info):
     """Clear the framebuffer"""
     clear_framebuffer()
     return jsonify({"status": "success", "message": "Framebuffer cleared"})
+
+
+@app.route('/api/refresh-display', methods=['POST'])
+@require_auth
+def refresh_hdmi_display(user_info):
+    """Cycle HDMI output to force the display to re-claim the Pi signal"""
+    result = refresh_display()
+    return jsonify(result)
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Progress Tracking Routes
