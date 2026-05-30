@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin - Pi Display Manager</title>
+    <link rel="stylesheet" href="/frontend/style.css" />
+    <style>
+      .admin-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 12px;
+      }
+
+      .admin-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .users-table-wrap {
+        overflow-x: auto;
+      }
+
+      .users-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 12px;
+      }
+
+      .users-table th,
+      .users-table td {
+        padding: 10px;
+        border-bottom: 1px solid var(--border-color);
+        text-align: left;
+        vertical-align: middle;
+      }
+
+      .users-table th {
+        color: var(--text-secondary);
+        font-size: 0.85rem;
+      }
+
+      .users-table .inline-field {
+        min-width: 140px;
+      }
+
+      .users-table .inline-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .hint {
+        color: var(--text-secondary);
+        font-size: 0.85rem;
+        margin-top: 8px;
+      }
+
+      .pill {
+        display: inline-block;
+        padding: 3px 8px;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+      }
+
+      .pill-admin {
+        background: rgba(245, 158, 11, 0.2);
+        color: #fbbf24;
+      }
+
+      .pill-manager {
+        background: rgba(59, 130, 246, 0.2);
+        color: #93c5fd;
+      }
+
+      @media (max-width: 768px) {
+        .users-table th,
+        .users-table td {
+          padding: 8px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <div class="header-top">
+          <h1>Admin Console</h1>
+          <div class="header-actions">
+            <span id="admin-user" class="user-info"></span>
+            <button id="back-btn" class="btn btn-primary btn-sm">Back To Dashboard</button>
+            <button id="logout-btn" class="btn btn-secondary btn-sm">Logout</button>
+          </div>
+        </div>
+      </header>
+
+      <main>
+        <section class="playlists-section">
+          <div class="section-header">
+            <h2>Create User</h2>
+          </div>
+
+          <div class="admin-grid" style="margin-top: 12px">
+            <div>
+              <label for="new-username">Username</label>
+              <input id="new-username" class="input-field" type="text" placeholder="Enter username" />
+            </div>
+            <div>
+              <label for="new-password">Password</label>
+              <input id="new-password" class="input-field" type="password" placeholder="Enter password" />
+            </div>
+            <div>
+              <label for="new-role">Role</label>
+              <select id="new-role" class="input-field">
+                <option value="manager">manager</option>
+                <option value="admin">admin</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="admin-actions" style="margin-top: 12px">
+            <button id="create-user-btn" class="btn btn-success">Add User</button>
+            <button id="refresh-users-btn" class="btn btn-secondary">Refresh</button>
+          </div>
+          <p class="hint">Passwords for new or updated users are stored as SHA-256 hashes.</p>
+        </section>
+
+        <section class="images-section">
+          <div class="section-header">
+            <h2>User Management</h2>
+          </div>
+          <div class="users-table-wrap">
+            <table class="users-table" id="users-table">
+              <thead>
+                <tr>
+                  <th>Username</th>
+                  <th>Current Role</th>
+                  <th>New Role</th>
+                  <th>New Password (optional)</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="users-body"></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      const state = {
+        currentUser: null,
+        users: [],
+      };
+
+      function showToast(message, type = "success") {
+        const toast = document.createElement("div");
+        toast.className = "toast";
+        toast.style.background = type === "error" ? "var(--danger-color)" : "var(--success-color)";
+        toast.textContent = message;
+
+        const container = document.getElementById("toast-container") || document.createElement("div");
+        if (!container.id) {
+          container.id = "toast-container";
+          document.body.appendChild(container);
+        }
+
+        container.appendChild(toast);
+        setTimeout(() => toast.remove(), 3000);
+      }
+
+      async function apiCall(path, options = {}) {
+        const response = await fetch(path, options);
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.message || "Request failed");
+        }
+        return data;
+      }
+
+      async function ensureAdmin() {
+        try {
+          const response = await fetch("/api/auth/status");
+          const data = await response.json();
+
+          if (!data.authenticated) {
+            window.location.href = "/login.html";
+            return false;
+          }
+
+          if (!data.user || data.user.role !== "admin") {
+            window.location.href = "/";
+            return false;
+          }
+
+          state.currentUser = data.user;
+          document.getElementById("admin-user").textContent =
+            "User: " + state.currentUser.username + " (admin)";
+          return true;
+        } catch (error) {
+          window.location.href = "/login.html";
+          return false;
+        }
+      }
+
+      async function loadUsers() {
+        try {
+          const data = await apiCall("/api/admin/users");
+          state.users = data.users || [];
+          renderUsers();
+        } catch (error) {
+          showToast(error.message, "error");
+        }
+      }
+
+      function rolePill(role) {
+        const normalized = role === "admin" ? "admin" : "manager";
+        const cls = normalized === "admin" ? "pill pill-admin" : "pill pill-manager";
+        return '<span class="' + cls + '">' + normalized + "</span>";
+      }
+
+      function renderUsers() {
+        const body = document.getElementById("users-body");
+        body.innerHTML = "";
+
+        if (!state.users.length) {
+          const row = document.createElement("tr");
+          row.innerHTML = '<td colspan="5" class="hint">No users found</td>';
+          body.appendChild(row);
+          return;
+        }
+
+        for (const user of state.users) {
+          const row = document.createElement("tr");
+
+          const usernameCell = document.createElement("td");
+          usernameCell.textContent = user.username;
+
+          const currentRoleCell = document.createElement("td");
+          currentRoleCell.innerHTML = rolePill(user.role);
+
+          const roleCell = document.createElement("td");
+          const roleSelect = document.createElement("select");
+          roleSelect.className = "input-field inline-field";
+          roleSelect.innerHTML =
+            '<option value="manager">manager</option><option value="admin">admin</option>';
+          roleSelect.value = user.role === "admin" ? "admin" : "manager";
+          roleCell.appendChild(roleSelect);
+
+          const passwordCell = document.createElement("td");
+          const passwordInput = document.createElement("input");
+          passwordInput.type = "password";
+          passwordInput.className = "input-field inline-field";
+          passwordInput.placeholder = "Leave blank to keep current";
+          passwordCell.appendChild(passwordInput);
+
+          const actionsCell = document.createElement("td");
+          const actions = document.createElement("div");
+          actions.className = "inline-actions";
+
+          const saveBtn = document.createElement("button");
+          saveBtn.className = "btn btn-primary btn-sm";
+          saveBtn.textContent = "Update";
+          saveBtn.addEventListener("click", () => updateExistingUser(user.username, roleSelect.value, passwordInput.value));
+
+          const deleteBtn = document.createElement("button");
+          deleteBtn.className = "btn btn-danger btn-sm";
+          deleteBtn.textContent = "Delete";
+          deleteBtn.disabled = state.currentUser && state.currentUser.username === user.username;
+          deleteBtn.addEventListener("click", () => deleteExistingUser(user.username));
+
+          actions.appendChild(saveBtn);
+          actions.appendChild(deleteBtn);
+          actionsCell.appendChild(actions);
+
+          row.appendChild(usernameCell);
+          row.appendChild(currentRoleCell);
+          row.appendChild(roleCell);
+          row.appendChild(passwordCell);
+          row.appendChild(actionsCell);
+          body.appendChild(row);
+        }
+      }
+
+      async function createUser() {
+        const username = document.getElementById("new-username").value.trim();
+        const password = document.getElementById("new-password").value;
+        const role = document.getElementById("new-role").value;
+
+        if (!username || !password) {
+          showToast("Username and password are required", "error");
+          return;
+        }
+
+        try {
+          await apiCall("/api/admin/users", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username, password, role }),
+          });
+
+          document.getElementById("new-username").value = "";
+          document.getElementById("new-password").value = "";
+          document.getElementById("new-role").value = "manager";
+
+          showToast("User created successfully");
+          loadUsers();
+        } catch (error) {
+          showToast(error.message, "error");
+        }
+      }
+
+      async function updateExistingUser(username, role, password) {
+        const payload = { role };
+        if (password && password.trim()) {
+          payload.password = password;
+        }
+
+        try {
+          await apiCall("/api/admin/users/" + encodeURIComponent(username), {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          showToast("User updated successfully");
+          loadUsers();
+        } catch (error) {
+          showToast(error.message, "error");
+        }
+      }
+
+      async function deleteExistingUser(username) {
+        if (!confirm("Delete user '" + username + "'?")) {
+          return;
+        }
+
+        try {
+          await apiCall("/api/admin/users/" + encodeURIComponent(username), {
+            method: "DELETE",
+          });
+          showToast("User deleted successfully");
+          loadUsers();
+        } catch (error) {
+          showToast(error.message, "error");
+        }
+      }
+
+      async function logout() {
+        await fetch("/api/auth/logout");
+        window.location.href = "/login.html";
+      }
+
+      document.getElementById("create-user-btn").addEventListener("click", createUser);
+      document.getElementById("refresh-users-btn").addEventListener("click", loadUsers);
+      document.getElementById("back-btn").addEventListener("click", () => {
+        window.location.href = "/";
+      });
+      document.getElementById("logout-btn").addEventListener("click", logout);
+
+      (async () => {
+        const ok = await ensureAdmin();
+        if (ok) {
+          loadUsers();
+        }
+      })();
+    </script>
+  </body>
+</html>
