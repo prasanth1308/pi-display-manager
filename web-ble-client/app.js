@@ -1,6 +1,7 @@
 // ── Wi-Fi notification response accumulator ─────────────────────────────────
 const wifiResponse = {
   resolve: null,
+  reject: null,
   timer: null,
   buffer: "",
 
@@ -20,6 +21,7 @@ const wifiResponse = {
       const cb = this.resolve;
       const captured = this.buffer;
       this.resolve = null;
+      this.reject = null;
       this.buffer = "";
       cb(captured);
     }
@@ -28,15 +30,29 @@ const wifiResponse = {
 
   // Send a command and wait up to `timeoutMs` for the notification response.
   async send(rawCommand, timeoutMs = 12000) {
+    if (this.resolve) {
+      throw new Error("Another Wi-Fi request is already in progress");
+    }
+
     return new Promise((resolve, reject) => {
       this.resolve = resolve;
+      this.reject = reject;
       this.buffer = "";
       this.timer = setTimeout(() => {
         this.resolve = null;
+        this.reject = null;
         this.buffer = "";
         reject(new Error("Timed out waiting for Wi-Fi response"));
       }, timeoutMs);
-      sendCommand(rawCommand);
+
+      sendCommand(rawCommand, { keepInput: true })
+        .catch((err) => {
+          clearTimeout(this.timer);
+          this.resolve = null;
+          this.reject = null;
+          this.buffer = "";
+          reject(err instanceof Error ? err : new Error(String(err)));
+        });
     });
   },
 };
@@ -226,16 +242,17 @@ function onNotification(event) {
   log(`[PI] ${message}`);
 }
 
-async function sendCommand(rawCommand) {
+async function sendCommand(rawCommand, options = {}) {
+  const keepInput = Boolean(options.keepInput);
   const command = (rawCommand ?? el.commandInput.value).trim();
   if (!command) {
-    return;
+    throw new Error("Command is empty");
   }
 
   if (!state.writeChar) {
     setStatus("Not connected", "err");
     log("ERROR: command not sent because write characteristic is unavailable.");
-    return;
+    throw new Error("Not connected");
   }
 
   const payload = encoder.encode(command);
@@ -251,10 +268,13 @@ async function sendCommand(rawCommand) {
     }
   } catch (error) {
     log(`ERROR: send failed (${error?.message || error}).`);
+    throw (error instanceof Error ? error : new Error(String(error)));
   }
 
-  el.commandInput.value = "";
-  el.commandInput.focus();
+  if (!keepInput) {
+    el.commandInput.value = "";
+    el.commandInput.focus();
+  }
 }
 
 el.connectBtn.addEventListener("click", () => {
