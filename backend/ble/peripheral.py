@@ -185,10 +185,28 @@ class PiBleGattPeripheral:
     def _on_read_request(self, characteristic, **kwargs):  # pragma: no cover - hardware callback
         return characteristic.value
 
-    def _on_write_request(self, characteristic, value, **kwargs):  # pragma: no cover - hardware callback
+    def _on_write_request(self, characteristic, value=None, **kwargs):  # pragma: no cover - hardware callback
         with self._write_lock:
-            raw = bytes(value)
+            # Different Bless backends pass write payload in different ways.
+            payload = value
+            if payload is None:
+                payload = kwargs.get("value")
+            if payload is None:
+                payload = getattr(characteristic, "value", b"")
+
+            raw = bytes(payload or b"")
+            char_uuid = getattr(characteristic, "uuid", "unknown")
+            self._logger.info("BLE write callback: char=%s bytes=%d", char_uuid, len(raw))
+
+            if not raw:
+                self._logger.warning("BLE RX ignored: empty payload")
+                return
+
             text = raw.decode("utf-8", errors="replace").strip()
+
+            if not text:
+                self._logger.warning("BLE RX ignored: UTF-8 payload decoded to empty text")
+                return
 
             self._logger.info("BLE RX: %s", text)
             print(f"[BLE RX] {text}", flush=True)
