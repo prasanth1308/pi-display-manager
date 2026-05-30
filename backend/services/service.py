@@ -527,6 +527,76 @@ def clear_framebuffer():
         logger.warning("Failed to clear framebuffer: %s", str(e))
 
 
+def refresh_display():
+    """
+    Mimic an HDMI unplug/replug cycle to force the display to re-claim
+    the Pi's HDMI output.
+
+    Sequence (same effect as physically reconnecting the cable):
+      1. tvservice -o   — disable HDMI encoder output
+      2. sleep 1 s
+      3. tvservice -p   — re-enable with preferred/auto-detected mode
+      4. fbset -depth 8 — reset framebuffer pixel depth
+      5. fbset -depth 16 — restore framebuffer pixel depth
+
+    After the framebuffer depth cycle the running fbi / direct-write
+    slideshow is briefly restarted so it re-renders into the fresh
+    framebuffer state.
+    """
+    errors = []
+
+    def _run(cmd, label, timeout=5):
+        try:
+            result = subprocess.run(cmd, capture_output=True, timeout=timeout)
+            if result.returncode != 0:
+                logger.warning("%s exited %d: %s", label, result.returncode,
+                               result.stderr.decode(errors="replace").strip())
+        except subprocess.TimeoutExpired:
+            logger.warning("%s timed out", label)
+        except FileNotFoundError:
+            logger.warning("%s not found (non-Pi environment?)", label)
+            errors.append(label)
+        except Exception as exc:
+            logger.warning("%s failed: %s", label, exc)
+            errors.append(label)
+
+    logger.info("Refreshing HDMI display output")
+
+    has_active_playback = slideshow_process is not None or video_process is not None
+    restart_idle_after_refresh = not has_active_playback
+
+    # Only touch idle fbi when there is no active playlist/video playback.
+    if restart_idle_after_refresh:
+        _kill_idle_fbi()
+
+    _run(["tvservice", "-o"], "tvservice -o")
+    time.sleep(1)
+    _run(["tvservice", "-p"], "tvservice -p")
+    time.sleep(0.5)
+    _run(["fbset", "-depth", "8"], "fbset depth 8")
+    _run(["fbset", "-depth", "16"], "fbset depth 16")
+    time.sleep(0.3)
+
+    # Re-render: if the slideshow is running stop/start it so fbi
+    # re-opens the framebuffer in the new mode.
+    if slideshow_process is not None:
+        logger.info("Restarting slideshow after display refresh")
+        playlist_to_restart = current_playlist
+        stop_slideshow()
+        if playlist_to_restart:
+            time.sleep(0.5)
+            start_slideshow(playlist_to_restart)
+    elif restart_idle_after_refresh:
+        # Bring back idle display only when nothing is actively playing.
+        start_idle_screen()
+    elif errors:
+        # tvservice not available (dev machine) — just clear framebuffer
+        clear_framebuffer()
+
+    logger.info("Display refresh complete")
+    return {"status": "success", "message": "Display refreshed"}
+
+
 def start_slideshow(playlist_id=None):
     """Start the slideshow using fbi"""
     global slideshow_process, current_playlist

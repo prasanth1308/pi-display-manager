@@ -35,8 +35,15 @@ const Auth = {
    */
   updateUserInfo() {
     const userInfoElement = document.getElementById("user-info");
+    const adminBtn = document.getElementById("admin-btn");
+
     if (userInfoElement && this.currentUser) {
-      userInfoElement.textContent = `👤 ${this.currentUser.username}`;
+      userInfoElement.textContent = `👤 ${this.currentUser.username} (${this.currentUser.role || "manager"})`;
+    }
+
+    if (adminBtn && this.currentUser) {
+      const isAdmin = this.currentUser.role === "admin";
+      adminBtn.style.display = isAdmin ? "inline-flex" : "none";
     }
   },
 
@@ -62,6 +69,14 @@ const Auth = {
    * Initialize authentication
    */
   init() {
+    const adminBtn = document.getElementById("admin-btn");
+
+    if (adminBtn) {
+      adminBtn.addEventListener("click", () => {
+        window.location.href = "/admin";
+      });
+    }
+
     // Setup logout button
     const logoutBtn = document.getElementById("logout-btn");
     if (logoutBtn) {
