@@ -562,6 +562,13 @@ def refresh_display():
 
     logger.info("Refreshing HDMI display output")
 
+    has_active_playback = slideshow_process is not None or video_process is not None
+    restart_idle_after_refresh = not has_active_playback
+
+    # Only touch idle fbi when there is no active playlist/video playback.
+    if restart_idle_after_refresh:
+        _kill_idle_fbi()
+
     _run(["tvservice", "-o"], "tvservice -o")
     time.sleep(1)
     _run(["tvservice", "-p"], "tvservice -p")
@@ -579,6 +586,9 @@ def refresh_display():
         if playlist_to_restart:
             time.sleep(0.5)
             start_slideshow(playlist_to_restart)
+    elif restart_idle_after_refresh:
+        # Bring back idle display only when nothing is actively playing.
+        start_idle_screen()
     elif errors:
         # tvservice not available (dev machine) — just clear framebuffer
         clear_framebuffer()
