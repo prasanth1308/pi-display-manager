@@ -33,6 +33,28 @@ http://localhost:9000/web-ble-client/
 
 If you open `index.html` directly from Finder (file://), modern browsers can block script loading and Web Bluetooth access.
 
+## Host on GitHub Pages (recommended)
+
+This repo now includes a Pages workflow at `.github/workflows/pages.yml`.
+
+### One-time setup in GitHub
+
+1. Open repository settings.
+2. Go to `Settings -> Pages`.
+3. Under **Build and deployment**, select **Source: GitHub Actions**.
+
+### Deploy
+
+1. Commit and push changes to branch `feat/blegatt`.
+2. Wait for workflow **Deploy Web BLE Client to GitHub Pages** to complete.
+3. Open the Pages URL from workflow output.
+
+Expected URL pattern:
+
+```text
+https://prasanth1308.github.io/pi-display-manager/
+```
+
 ## Usage
 
 1. Click Connect.
