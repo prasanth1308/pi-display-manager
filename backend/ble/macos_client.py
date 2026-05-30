@@ -130,19 +130,18 @@ class MacBleGattClient:
                 self._logger.warning("Disconnected. Reconnecting...")
                 return
 
-            try:
-                command = await asyncio.wait_for(
-                    asyncio.to_thread(input, "ble> "),
-                    timeout=1.0,
-                )
-            except asyncio.TimeoutError:
-                continue
+            command = await asyncio.to_thread(input, "ble> ")
 
             command = command.strip()
+            if command.lower().startswith("ble>"):
+                # Allow accidental copy/paste of the prompt prefix.
+                command = command[4:].strip()
+
             if not command:
                 continue
             if command.lower() in {"quit", "exit"}:
                 self._shutdown_event.set()
+                self._logger.info("Exit command received; shutting down client")
                 return
 
             await self._send_command(command)
@@ -153,6 +152,7 @@ class MacBleGattClient:
             return
 
         payload = command.encode("utf-8")
+        print(f"[MAC->PI] {command}", flush=True)
         self._logger.info("Sending command: %s", command)
 
         # Some BLE stacks/peripherals prefer one write mode over the other.
@@ -202,7 +202,11 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 async def _async_main(args) -> None:
-    logging.basicConfig(level=getattr(logging, args.log_level), format="%(asctime)s %(levelname)s %(message)s")
+    logging.basicConfig(
+        level=getattr(logging, args.log_level),
+        format="%(asctime)s %(levelname)s %(message)s",
+        force=True,
+    )
     logger = logging.getLogger("ble-macos-client")
 
     client = MacBleGattClient(
