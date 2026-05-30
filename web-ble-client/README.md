@@ -71,4 +71,4 @@ https://prasanth1308.github.io/pi-display-manager/
 
 - If Connect button does nothing: ensure browser supports Web Bluetooth and page is on localhost/HTTPS.
 - If connected but no response: verify UUIDs match Pi config.
-- If device not listed: check Pi service logs and Bluetooth adapter state.
+- If device not listed: check Pi service logs and Bluetooth adapter state
