@@ -581,9 +581,7 @@ def refresh_display():
     has_active_playback = slideshow_process is not None or video_process is not None
     restart_idle_after_refresh = not has_active_playback
 
-    # Only touch idle fbi when there is no active playlist/video playback.
-    if restart_idle_after_refresh:
-        _kill_idle_fbi()
+    _kill_idle_fbi()
 
     _run(["tvservice", "-o"], "tvservice -o")
     time.sleep(1)
@@ -593,9 +591,18 @@ def refresh_display():
     _run(["fbset", "-depth", "16"], "fbset depth 16")
     time.sleep(0.3)
 
-    # Re-render: if the slideshow is running stop/start it so fbi
+    # Re-render: if video/slideshow is running stop/start it so player process
     # re-opens the framebuffer in the new mode.
-    if slideshow_process is not None:
+    if video_process is not None:
+        logger.info("[TRACE-REFRESH] refresh path=restart-video")
+        playlist_to_restart = current_playlist
+        logger.info("[TRACE-REFRESH] refresh captured video playlist_to_restart=%s", playlist_to_restart)
+        stop_video_playback(start_idle=False)
+        if playlist_to_restart:
+            time.sleep(0.5)
+            logger.info("[TRACE-REFRESH] refresh starting video again playlist=%s", playlist_to_restart)
+            start_video_playback(playlist_to_restart)
+    elif slideshow_process is not None:
         logger.info("[TRACE-REFRESH] refresh path=restart-slideshow")
         playlist_to_restart = current_playlist
         logger.info("[TRACE-REFRESH] refresh captured playlist_to_restart=%s", playlist_to_restart)
@@ -604,10 +611,6 @@ def refresh_display():
             time.sleep(0.5)
             logger.info("[TRACE-REFRESH] refresh starting slideshow again playlist=%s", playlist_to_restart)
             start_slideshow(playlist_to_restart)
-    elif restart_idle_after_refresh:
-        # Bring back idle display only when nothing is actively playing.
-        logger.info("[TRACE-REFRESH] refresh path=restart-idle")
-        start_idle_screen()
     elif errors:
         # tvservice not available (dev machine) — just clear framebuffer
         logger.info("[TRACE-REFRESH] refresh path=clear-framebuffer due to errors=%s", errors)
