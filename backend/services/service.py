@@ -117,9 +117,6 @@ def load_config():
             "ble": {
                 "enabled": True,
                 "device_name": "PiDisplayManager",
-                "service_uuid": "12345678-1234-5678-1234-56789abcdef0",
-                "write_char_uuid": "12345678-1234-5678-1234-56789abcdef1",
-                "notify_char_uuid": "12345678-1234-5678-1234-56789abcdef2"
             }
         }
     except json.JSONDecodeError as e:
@@ -129,9 +126,6 @@ def load_config():
     ble_cfg = config.setdefault("ble", {})
     ble_cfg.setdefault("enabled", True)
     ble_cfg.setdefault("device_name", "PiDisplayManager")
-    ble_cfg.setdefault("service_uuid", "12345678-1234-5678-1234-56789abcdef0")
-    ble_cfg.setdefault("write_char_uuid", "12345678-1234-5678-1234-56789abcdef1")
-    ble_cfg.setdefault("notify_char_uuid", "12345678-1234-5678-1234-56789abcdef2")
 
 
 def load_playlists_db():
@@ -1003,6 +997,15 @@ def start_ble_peripheral():
         logger.info("BLE peripheral disabled in config")
         return False
 
+    required_keys = ["service_uuid", "write_char_uuid", "notify_char_uuid"]
+    missing_keys = [key for key in required_keys if not ble_cfg.get(key)]
+    if missing_keys:
+        logger.error(
+            "BLE config missing required key(s): %s. Please set them in config.json.",
+            ", ".join(missing_keys),
+        )
+        return False
+
     if ble_peripheral and ble_peripheral.running:
         return True
 
@@ -1014,9 +1017,9 @@ def start_ble_peripheral():
 
     peripheral_config = BleConfig(
         device_name=ble_cfg.get("device_name", "PiDisplayManager"),
-        service_uuid=ble_cfg.get("service_uuid", "12345678-1234-5678-1234-56789abcdef0"),
-        write_char_uuid=ble_cfg.get("write_char_uuid", "12345678-1234-5678-1234-56789abcdef1"),
-        notify_char_uuid=ble_cfg.get("notify_char_uuid", "12345678-1234-5678-1234-56789abcdef2"),
+        service_uuid=ble_cfg.get("service_uuid"),
+        write_char_uuid=ble_cfg.get("write_char_uuid"),
+        notify_char_uuid=ble_cfg.get("notify_char_uuid"),
     )
 
     ble_peripheral = PiBleGattPeripheral(logger=logger, config=peripheral_config, handler=_handle_ble_command)
