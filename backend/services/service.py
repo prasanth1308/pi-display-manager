@@ -368,7 +368,7 @@ def _run_idle_loop(image_path, custom_text):
     """
     global idle_process
 
-    logger.info("Idle screen thread started")
+    logger.info("[TRACE-REFRESH] idle-loop-start image=%s custom_text_len=%d", image_path, len(custom_text or ""))
     framebuffer = config.get("framebuffer", "/dev/fb0")
     is_linux = sys.platform == "linux"
 
@@ -407,6 +407,7 @@ def _run_idle_loop(image_path, custom_text):
                     idle_process = subprocess.Popen(
                         cmd, stdin=subprocess.DEVNULL, stdout=f, stderr=f
                     )
+                logger.info("[TRACE-REFRESH] idle-fbi-started pid=%s", getattr(idle_process, "pid", None))
             except FileNotFoundError:
                 logger.warning("fbi not found — idle display unavailable")
             except Exception as e:
@@ -417,7 +418,7 @@ def _run_idle_loop(image_path, custom_text):
             break  # stop_event fired
 
     _kill_idle_fbi()
-    logger.info("Idle screen thread stopped")
+    logger.info("[TRACE-REFRESH] idle-loop-stop")
 
 
 def start_idle_screen():
@@ -425,7 +426,14 @@ def start_idle_screen():
     global idle_thread, idle_stop_event
 
     cfg = get_idle_config()
+    logger.info(
+        "[TRACE-REFRESH] start_idle_screen called enabled=%s image_path=%s idle_thread_alive=%s",
+        cfg.get("enabled"),
+        cfg.get("image_path"),
+        bool(idle_thread and idle_thread.is_alive()),
+    )
     if not cfg.get("enabled") or not cfg.get("image_path"):
+        logger.info("[TRACE-REFRESH] start_idle_screen skipped (disabled or no image)")
         return
 
     stop_idle_screen()  # ensure clean state
@@ -438,19 +446,26 @@ def start_idle_screen():
         name="idle-screen",
     )
     idle_thread.start()
-    logger.info("Idle screen started")
+    logger.info("[TRACE-REFRESH] idle-thread-started name=%s", idle_thread.name)
 
 
 def stop_idle_screen():
     """Stop the idle screen thread and kill any fbi process it owns."""
     global idle_thread, idle_stop_event
+    logger.info(
+        "[TRACE-REFRESH] stop_idle_screen called idle_thread_alive=%s idle_stop_event_set=%s",
+        bool(idle_thread and idle_thread.is_alive()),
+        idle_stop_event.is_set(),
+    )
     subprocess.run(["pkill", "-9", "fbi"], capture_output=True)
     clear_framebuffer()
     idle_stop_event.set()
     if idle_thread and idle_thread.is_alive():
         idle_thread.join(timeout=3)
+        logger.info("[TRACE-REFRESH] stop_idle_screen joined idle thread")
     idle_thread = None
     idle_stop_event = threading.Event()  # reset for next use
+    logger.info("[TRACE-REFRESH] stop_idle_screen complete")
 
 
 # ── Playlists DB ──────────────────────────────────────────────────────────────
@@ -555,7 +570,13 @@ def refresh_display():
             logger.warning("%s failed: %s", label, exc)
             errors.append(label)
 
-    logger.info("Refreshing HDMI display output")
+    logger.info(
+        "[TRACE-REFRESH] refresh_display start running_slideshow=%s running_video=%s current_playlist=%s idle_thread_alive=%s",
+        slideshow_process is not None,
+        video_process is not None,
+        current_playlist,
+        bool(idle_thread and idle_thread.is_alive()),
+    )
 
     has_active_playback = slideshow_process is not None or video_process is not None
     restart_idle_after_refresh = not has_active_playback
@@ -575,26 +596,43 @@ def refresh_display():
     # Re-render: if the slideshow is running stop/start it so fbi
     # re-opens the framebuffer in the new mode.
     if slideshow_process is not None:
-        logger.info("Restarting slideshow after display refresh")
+        logger.info("[TRACE-REFRESH] refresh path=restart-slideshow")
         playlist_to_restart = current_playlist
+        logger.info("[TRACE-REFRESH] refresh captured playlist_to_restart=%s", playlist_to_restart)
         stop_slideshow()
         if playlist_to_restart:
             time.sleep(0.5)
+            logger.info("[TRACE-REFRESH] refresh starting slideshow again playlist=%s", playlist_to_restart)
             start_slideshow(playlist_to_restart)
     elif restart_idle_after_refresh:
         # Bring back idle display only when nothing is actively playing.
+        logger.info("[TRACE-REFRESH] refresh path=restart-idle")
         start_idle_screen()
     elif errors:
         # tvservice not available (dev machine) — just clear framebuffer
+        logger.info("[TRACE-REFRESH] refresh path=clear-framebuffer due to errors=%s", errors)
         clear_framebuffer()
 
-    logger.info("Display refresh complete")
+    logger.info(
+        "[TRACE-REFRESH] refresh_display complete running_slideshow=%s running_video=%s current_playlist=%s idle_thread_alive=%s",
+        slideshow_process is not None,
+        video_process is not None,
+        current_playlist,
+        bool(idle_thread and idle_thread.is_alive()),
+    )
     return {"status": "success", "message": "Display refreshed"}
 
 
 def start_slideshow(playlist_id=None):
     """Start the slideshow using fbi"""
     global slideshow_process, current_playlist
+
+    logger.info(
+        "[TRACE-REFRESH] start_slideshow called playlist=%s current_playlist=%s idle_thread_alive=%s",
+        playlist_id,
+        current_playlist,
+        bool(idle_thread and idle_thread.is_alive()),
+    )
 
     stop_idle_screen()
 
@@ -655,6 +693,7 @@ def start_slideshow(playlist_id=None):
         save_playlists_db()
         
         logger.info("Slideshow started (PID: %d)", slideshow_process.pid)
+        logger.info("[TRACE-REFRESH] start_slideshow success pid=%s playlist=%s", slideshow_process.pid, playlist_id)
         return {
             "status": "started",
             "message": "Slideshow started",
@@ -673,6 +712,14 @@ def stop_slideshow():
     """Stop the slideshow and kill all fbi processes"""
     global slideshow_process, current_playlist
 
+    logger.info(
+        "[TRACE-REFRESH] stop_slideshow called running_slideshow=%s running_video=%s current_playlist=%s idle_thread_alive=%s",
+        slideshow_process is not None,
+        video_process is not None,
+        current_playlist,
+        bool(idle_thread and idle_thread.is_alive()),
+    )
+
     if slideshow_process is None:
         logger.info("Stop requested but slideshow not running")
         try:
@@ -683,6 +730,7 @@ def stop_slideshow():
         
         clear_framebuffer()
         start_idle_screen()
+        logger.info("[TRACE-REFRESH] stop_slideshow exit=not_running")
         return {"status": "not_running", "message": "Slideshow is not running (cleaned up framebuffer)"}
 
     try:
@@ -705,6 +753,8 @@ def stop_slideshow():
 
     clear_framebuffer()
     start_idle_screen()
+
+    logger.info("[TRACE-REFRESH] stop_slideshow exit=stopped")
 
     return {"status": "stopped", "message": "Slideshow stopped"}
 
