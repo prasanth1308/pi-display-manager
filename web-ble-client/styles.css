@@ -1106,11 +1106,24 @@ button:disabled {
 }
 
 button.quick,
-.wifi-pick,
-#disconnectBtn,
-#clearLogsBtn,
-#wifiListBtn {
+.wifi-pick {
   background: var(--secondary-color);
+}
+
+button.quick[data-cmd="ping"],
+button.quick[data-cmd="status"],
+button.quick[data-cmd="stop"],
+button.quick[data-cmd="default-start"] {
+  background: var(--warning-color);
+}
+
+#wifiListBtn {
+  background: var(--primary-color);
+}
+
+#disconnectBtn,
+#clearLogsBtn {
+  background: var(--danger-color);
 }
 
 #commandInput {
