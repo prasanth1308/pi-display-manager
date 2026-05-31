@@ -463,8 +463,9 @@ def stop_idle_screen():
     if idle_thread and idle_thread.is_alive():
         idle_thread.join(timeout=3)
         logger.info("[TRACE-REFRESH] stop_idle_screen joined idle thread")
+    if idle_thread and idle_thread.is_alive():
+        logger.warning("[TRACE-REFRESH] stop_idle_screen idle thread still alive after join timeout")
     idle_thread = None
-    idle_stop_event = threading.Event()  # reset for next use
     logger.info("[TRACE-REFRESH] stop_idle_screen complete")
 
 
@@ -606,7 +607,7 @@ def refresh_display():
         logger.info("[TRACE-REFRESH] refresh path=restart-slideshow")
         playlist_to_restart = current_playlist
         logger.info("[TRACE-REFRESH] refresh captured playlist_to_restart=%s", playlist_to_restart)
-        stop_slideshow()
+        stop_slideshow(start_idle=False)
         if playlist_to_restart:
             time.sleep(0.5)
             logger.info("[TRACE-REFRESH] refresh starting slideshow again playlist=%s", playlist_to_restart)
@@ -711,8 +712,8 @@ def start_slideshow(playlist_id=None):
         return {"status": "error", "message": str(e)}
 
 
-def stop_slideshow():
-    """Stop the slideshow and kill all fbi processes"""
+def stop_slideshow(start_idle=True):
+    """Stop the slideshow and kill all fbi processes."""
     global slideshow_process, current_playlist
 
     logger.info(
@@ -732,7 +733,8 @@ def stop_slideshow():
             logger.error("Error running pkill: %s", str(e))
         
         clear_framebuffer()
-        start_idle_screen()
+        if start_idle:
+            start_idle_screen()
         logger.info("[TRACE-REFRESH] stop_slideshow exit=not_running")
         return {"status": "not_running", "message": "Slideshow is not running (cleaned up framebuffer)"}
 
@@ -755,7 +757,8 @@ def stop_slideshow():
         logger.error("Error running pkill: %s", str(e))
 
     clear_framebuffer()
-    start_idle_screen()
+    if start_idle:
+        start_idle_screen()
 
     logger.info("[TRACE-REFRESH] stop_slideshow exit=stopped")
 
@@ -2401,8 +2404,8 @@ def start_video_playback(playlist_id):
         return {"status": "error", "message": str(e)}
 
 
-def stop_video_playback():
-    """Stop video playback and kill all VLC processes"""
+def stop_video_playback(start_idle=True):
+    """Stop video playback and kill all VLC processes."""
     global video_process, current_playlist
 
     if video_process is None:
@@ -2433,7 +2436,8 @@ def stop_video_playback():
     except Exception as e:
         logger.error("Error running pkill: %s", str(e))
 
-    start_idle_screen()
+    if start_idle:
+        start_idle_screen()
     return {"status": "stopped", "message": "Video playback stopped"}
 
 
