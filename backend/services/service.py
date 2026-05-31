@@ -914,13 +914,69 @@ def _scan_wifi_networks():
 def _wifi_connect(ssid: str, password: str) -> str:
     """Connect to a Wi-Fi network using nmcli."""
     try:
-        r = subprocess.run(
-            ["sudo", "nmcli", "device", "wifi", "connect", ssid, "password", password],
-            capture_output=True, text=True, timeout=30
-        )
+        def _nmcli(args, timeout=30):
+            return subprocess.run(
+                ["sudo", "nmcli"] + args,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+
+        # Remove stale profile for same SSID to avoid invalid old security settings.
+        _nmcli(["connection", "delete", ssid], timeout=10)
+
+        # First try: simple nmcli connect (works for most WPA2 hotspots/APs).
+        r = _nmcli(["device", "wifi", "connect", ssid, "password", password, "ifname", "wlan0"], timeout=35)
         if r.returncode == 0:
             return f"WIFI_CONNECTED {ssid}"
-        return f"ERROR {r.stderr.strip() or r.stdout.strip()}"
+
+        base_err = (r.stderr.strip() or r.stdout.strip() or "nmcli connect failed")
+        lower_err = base_err.lower()
+
+        # If key-mgmt/security properties are missing, build profile explicitly.
+        if "key-mgmt" in lower_err or "802-11-wireless-security" in lower_err:
+            _nmcli(["connection", "delete", ssid], timeout=10)
+
+            add = _nmcli(["connection", "add", "type", "wifi", "ifname", "wlan0", "con-name", ssid, "ssid", ssid], timeout=15)
+            if add.returncode != 0:
+                add_err = add.stderr.strip() or add.stdout.strip() or "failed to add profile"
+                return f"ERROR {add_err}"
+
+            # WPA/WPA2-PSK profile
+            mod_psk = _nmcli([
+                "connection", "modify", ssid,
+                "wifi-sec.key-mgmt", "wpa-psk",
+                "wifi-sec.psk", password,
+                "ipv4.method", "auto",
+                "ipv6.method", "ignore",
+            ], timeout=15)
+
+            if mod_psk.returncode == 0:
+                up_psk = _nmcli(["connection", "up", ssid], timeout=35)
+                if up_psk.returncode == 0:
+                    return f"WIFI_CONNECTED {ssid}"
+
+            # Retry with WPA3 SAE (some mobile hotspots default here).
+            mod_sae = _nmcli([
+                "connection", "modify", ssid,
+                "wifi-sec.key-mgmt", "sae",
+                "wifi-sec.psk", password,
+                "ipv4.method", "auto",
+                "ipv6.method", "ignore",
+            ], timeout=15)
+
+            if mod_sae.returncode == 0:
+                up_sae = _nmcli(["connection", "up", ssid], timeout=35)
+                if up_sae.returncode == 0:
+                    return f"WIFI_CONNECTED {ssid}"
+                sae_err = up_sae.stderr.strip() or up_sae.stdout.strip() or "failed to activate SAE profile"
+                return f"ERROR {sae_err}"
+
+            psk_err = mod_psk.stderr.strip() or mod_psk.stdout.strip() or "failed to configure WPA-PSK"
+            sae_cfg_err = mod_sae.stderr.strip() or mod_sae.stdout.strip() or "failed to configure SAE"
+            return f"ERROR {psk_err}; {sae_cfg_err}"
+
+        return f"ERROR {base_err}"
     except FileNotFoundError:
         # nmcli not available — fall back to wpa_supplicant
         try:
