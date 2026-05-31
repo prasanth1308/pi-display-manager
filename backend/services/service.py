@@ -13,6 +13,7 @@ import threading
 import time
 import uuid
 import tempfile
+import shlex
 from datetime import datetime
 from pathlib import Path
 import yt_dlp
@@ -27,7 +28,9 @@ playlists_db = {}
 current_playlist = None
 download_status = {}  # Track video download status
 downscale_status = {}  # Track video downscaling progress
+wifi_scan_cache = {"items": [], "created_at": 0.0}  # Cached Wi-Fi scan for BLE paging
 logger = None
+ble_peripheral = None
 BASE_DIR = Path(__file__).parent.parent.parent
 DATA_DIR = BASE_DIR / "data"
 PLAYLISTS_DIR = DATA_DIR / "playlists"
@@ -69,17 +72,22 @@ def _find_font():
 def setup_logging():
     """Configure logging to file and console"""
     global logger
-    log_file = BASE_DIR / "slideshow_api.log"
+    log_file = BASE_DIR / "slideshow.log"
+
+    # Ensure the log path exists before attaching file handler.
+    log_file.parent.mkdir(parents=True, exist_ok=True)
 
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s',
         handlers=[
-            logging.FileHandler(log_file),
+            logging.FileHandler(log_file, encoding="utf-8"),
             logging.StreamHandler()
-        ]
+        ],
+        force=True,
     )
-    logger = logging.getLogger(__name__)
+    logger = logging.getLogger("pi_display_manager")
+    logger.info("Logging initialized: %s", log_file)
 
 
 def ensure_directories():
@@ -105,11 +113,19 @@ def load_config():
         config = {
             "api_port": 80,
             "delay": 5,
-            "framebuffer": "/dev/fb0"
+            "framebuffer": "/dev/fb0",
+            "ble": {
+                "enabled": True,
+                "device_name": "PiDisplayManager",
+            }
         }
     except json.JSONDecodeError as e:
         logger.error("Invalid JSON in config: %s", e)
         sys.exit(1)
+
+    ble_cfg = config.setdefault("ble", {})
+    ble_cfg.setdefault("enabled", True)
+    ble_cfg.setdefault("device_name", "PiDisplayManager")
 
 
 def load_playlists_db():
@@ -352,7 +368,6 @@ def _run_idle_loop(image_path, custom_text):
     """
     global idle_process
 
-    logger.info("Idle screen thread started")
     framebuffer = config.get("framebuffer", "/dev/fb0")
     is_linux = sys.platform == "linux"
 
@@ -401,9 +416,6 @@ def _run_idle_loop(image_path, custom_text):
             break  # stop_event fired
 
     _kill_idle_fbi()
-    logger.info("Idle screen thread stopped")
-
-
 def start_idle_screen():
     """Start the idle screen if configured and enabled."""
     global idle_thread, idle_stop_event
@@ -422,9 +434,6 @@ def start_idle_screen():
         name="idle-screen",
     )
     idle_thread.start()
-    logger.info("Idle screen started")
-
-
 def stop_idle_screen():
     """Stop the idle screen thread and kill any fbi process it owns."""
     global idle_thread, idle_stop_event
@@ -433,8 +442,9 @@ def stop_idle_screen():
     idle_stop_event.set()
     if idle_thread and idle_thread.is_alive():
         idle_thread.join(timeout=3)
+    if idle_thread and idle_thread.is_alive():
+        logger.warning("idle thread still alive after join timeout")
     idle_thread = None
-    idle_stop_event = threading.Event()  # reset for next use
 
 
 # ── Playlists DB ──────────────────────────────────────────────────────────────
@@ -504,6 +514,73 @@ def clear_framebuffer():
         logger.warning("Framebuffer clear timed out")
     except Exception as e:
         logger.warning("Failed to clear framebuffer: %s", str(e))
+
+
+def refresh_display():
+    """
+    Mimic an HDMI unplug/replug cycle to force the display to re-claim
+    the Pi's HDMI output.
+
+    Sequence (same effect as physically reconnecting the cable):
+      1. tvservice -o   — disable HDMI encoder output
+      2. sleep 1 s
+      3. tvservice -p   — re-enable with preferred/auto-detected mode
+      4. fbset -depth 8 — reset framebuffer pixel depth
+      5. fbset -depth 16 — restore framebuffer pixel depth
+
+    After the framebuffer depth cycle the running fbi / direct-write
+    slideshow is briefly restarted so it re-renders into the fresh
+    framebuffer state.
+    """
+    errors = []
+
+    def _run(cmd, label, timeout=5):
+        try:
+            result = subprocess.run(cmd, capture_output=True, timeout=timeout)
+            if result.returncode != 0:
+                logger.warning("%s exited %d: %s", label, result.returncode,
+                               result.stderr.decode(errors="replace").strip())
+        except subprocess.TimeoutExpired:
+            logger.warning("%s timed out", label)
+        except FileNotFoundError:
+            logger.warning("%s not found (non-Pi environment?)", label)
+            errors.append(label)
+        except Exception as exc:
+            logger.warning("%s failed: %s", label, exc)
+            errors.append(label)
+
+    has_active_playback = slideshow_process is not None or video_process is not None
+    restart_idle_after_refresh = not has_active_playback
+
+    _kill_idle_fbi()
+
+    _run(["tvservice", "-o"], "tvservice -o")
+    time.sleep(1)
+    _run(["tvservice", "-p"], "tvservice -p")
+    time.sleep(0.5)
+    _run(["fbset", "-depth", "8"], "fbset depth 8")
+    _run(["fbset", "-depth", "16"], "fbset depth 16")
+    time.sleep(0.3)
+
+    # Re-render: if video/slideshow is running stop/start it so player process
+    # re-opens the framebuffer in the new mode.
+    if video_process is not None:
+        playlist_to_restart = current_playlist
+        stop_video_playback(start_idle=False)
+        if playlist_to_restart:
+            time.sleep(0.5)
+            start_video_playback(playlist_to_restart)
+    elif slideshow_process is not None:
+        playlist_to_restart = current_playlist
+        stop_slideshow(start_idle=False)
+        if playlist_to_restart:
+            time.sleep(0.5)
+            start_slideshow(playlist_to_restart)
+    elif errors:
+        # tvservice not available (dev machine) — just clear framebuffer
+        logger.info("refresh path=clear-framebuffer due to errors=%s", errors)
+        clear_framebuffer()
+    return {"status": "success", "message": "Display refreshed"}
 
 
 def start_slideshow(playlist_id=None):
@@ -583,8 +660,8 @@ def start_slideshow(playlist_id=None):
         return {"status": "error", "message": str(e)}
 
 
-def stop_slideshow():
-    """Stop the slideshow and kill all fbi processes"""
+def stop_slideshow(start_idle=True):
+    """Stop the slideshow and kill all fbi processes."""
     global slideshow_process, current_playlist
 
     if slideshow_process is None:
@@ -596,7 +673,8 @@ def stop_slideshow():
             logger.error("Error running pkill: %s", str(e))
         
         clear_framebuffer()
-        start_idle_screen()
+        if start_idle:
+            start_idle_screen()
         return {"status": "not_running", "message": "Slideshow is not running (cleaned up framebuffer)"}
 
     try:
@@ -618,7 +696,8 @@ def stop_slideshow():
         logger.error("Error running pkill: %s", str(e))
 
     clear_framebuffer()
-    start_idle_screen()
+    if start_idle:
+        start_idle_screen()
 
     return {"status": "stopped", "message": "Slideshow stopped"}
 
@@ -635,6 +714,7 @@ def get_status():
     
     return {
         "running": slideshow_process is not None or video_process is not None,
+        "ble_running": bool(ble_peripheral and ble_peripheral.running),
         "current_playlist": current_playlist,
         "active_playlist": active_playlist_id,
         "image_count": image_count,
@@ -642,6 +722,375 @@ def get_status():
         "framebuffer": config.get("framebuffer"),
         "total_playlists": len(playlists_db.get("playlists", {}))
     }
+
+
+def _handle_ble_command(command: str):
+    """Handle BLE commands received from a central device."""
+    if not command:
+        return "ERROR empty command"
+
+    parts = shlex.split(command)
+    if not parts:
+        return "ERROR empty command"
+
+    op = parts[0].lower()
+
+    if op == "ping":
+        return "PONG"
+
+    if op == "status":
+        status = get_status()
+        slim = {
+            "running": status.get("running"),
+            "current_playlist": status.get("current_playlist"),
+            "active_playlist": status.get("active_playlist"),
+            "image_count": status.get("image_count"),
+        }
+        return json.dumps(slim)
+
+    if op == "stop":
+        result = stop_slideshow()
+        return f"STOP {result.get('status')} {result.get('message', '')}".strip()
+
+    if op == "start":
+        if len(parts) < 2:
+            return "ERROR usage: start <playlist_id>"
+        playlist_id = parts[1]
+        result = start_slideshow(playlist_id)
+        return f"START {result.get('status')} {result.get('message', '')}".strip()
+
+    if op == "default-start":
+        started = start_default_playlist()
+        return "DEFAULT_START success" if started else "DEFAULT_START error"
+
+    if op == "wifi-list":
+        return _wifi_list()
+
+    if op == "wifi-list-page":
+        if len(parts) < 2:
+            return "ERROR usage: wifi-list-page <next_offset>"
+        try:
+            next_offset = int(parts[1])
+        except ValueError:
+            return "ERROR wifi-list-page offset must be integer"
+        return _wifi_list_page(next_offset)
+
+    if op == "wifi-connect":
+        if len(parts) < 3:
+            return "ERROR usage: wifi-connect <ssid> <password>"
+        ssid, password = parts[1], parts[2]
+        return _wifi_connect(ssid, password)
+
+    if op == "wifi-forget":
+        if len(parts) < 2:
+            return "ERROR usage: wifi-forget <ssid>"
+        return _wifi_forget(parts[1])
+
+    return f"ACK {command}"
+
+
+# ── Wi-Fi helpers ─────────────────────────────────────────────────────────────
+
+def _wifi_list() -> str:
+    """Start a fresh Wi-Fi scan and return the first BLE-sized page."""
+    try:
+        items = _scan_wifi_networks()
+        wifi_scan_cache["items"] = items
+        wifi_scan_cache["created_at"] = time.time()
+        return _wifi_list_page(0)
+    except Exception as exc:
+        logger.error("wifi-list failed: %s", exc)
+        return f"ERROR wifi-list failed: {exc}"
+
+
+def _wifi_list_page(offset: int) -> str:
+    """Return a BLE-sized page from the cached Wi-Fi scan result."""
+    items = wifi_scan_cache.get("items", [])
+    age = time.time() - float(wifi_scan_cache.get("created_at", 0.0))
+
+    if not items or age > 60:
+        return "ERROR wifi-list cache expired, run wifi-list first"
+
+    if offset < 0:
+        offset = 0
+    if offset >= len(items):
+        offset = len(items)
+
+    page = _build_wifi_page(items, offset)
+    return "WIFI_LIST_PAGE " + json.dumps(page, separators=(",", ":"))
+
+
+def _build_wifi_page(items, offset: int):
+    """
+    Build a compact Wi-Fi page sized for BLE notifications.
+    Keys are shortened to keep payload within max BLE message size.
+    """
+    total = len(items)
+    max_payload_chars = 150  # Keep under peripheral max payload (180 bytes) with prefix
+    page_items = []
+    next_offset = offset
+
+    for idx in range(offset, total):
+        raw = items[idx]
+        compact = {
+            "s": raw.get("ssid", ""),
+            "g": raw.get("signal"),
+            "c": bool(raw.get("connected", False)),
+        }
+        candidate = page_items + [compact]
+        probe = {
+            "o": offset,
+            "n": idx + 1,
+            "t": total,
+            "d": (idx + 1) >= total,
+            "i": candidate,
+        }
+        if len(json.dumps(probe, separators=(",", ":"))) > max_payload_chars:
+            break
+        page_items = candidate
+        next_offset = idx + 1
+
+    done = next_offset >= total
+    return {
+        "o": offset,
+        "n": next_offset,
+        "t": total,
+        "d": done,
+        "i": page_items,
+    }
+
+
+def _scan_wifi_networks():
+    """Scan visible Wi-Fi SSIDs and mark currently connected network."""
+    connected_ssid = ""
+    try:
+        r = subprocess.run(
+            ["iwgetid", "-r"],
+            capture_output=True, text=True, timeout=5
+        )
+        connected_ssid = r.stdout.strip()
+    except Exception:
+        pass
+
+    scan = subprocess.run(
+        ["sudo", "iwlist", "wlan0", "scan"],
+        capture_output=True, text=True, timeout=15
+    )
+    networks = {}
+    current_ssid = None
+    current_signal = None
+    for line in scan.stdout.splitlines():
+        line = line.strip()
+        if line.startswith("ESSID:"):
+            current_ssid = line[6:].strip().strip('"')
+        if "Signal level=" in line:
+            try:
+                sig_part = [p for p in line.split() if "Signal" in p or "level=" in p]
+                level_str = "".join(sig_part).split("level=")[-1].split(" ")[0].split("/")[0]
+                current_signal = int(float(level_str))
+            except Exception:
+                current_signal = None
+        if current_ssid is not None:
+            key = current_ssid
+            if key and key not in networks:
+                networks[key] = {
+                    "ssid": key,
+                    "signal": current_signal,
+                    "connected": key == connected_ssid,
+                }
+            current_ssid = None
+            current_signal = None
+
+    return sorted(networks.values(), key=lambda n: n.get("signal") or -100, reverse=True)
+
+
+def _wifi_connect(ssid: str, password: str) -> str:
+    """Connect to a Wi-Fi network using nmcli."""
+    try:
+        def _nmcli(args, timeout=30):
+            return subprocess.run(
+                ["sudo", "nmcli"] + args,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+
+        # Remove stale profile for same SSID to avoid invalid old security settings.
+        _nmcli(["connection", "delete", ssid], timeout=10)
+
+        # First try: simple nmcli connect (works for most WPA2 hotspots/APs).
+        r = _nmcli(["device", "wifi", "connect", ssid, "password", password, "ifname", "wlan0"], timeout=35)
+        if r.returncode == 0:
+            return f"WIFI_CONNECTED {ssid}"
+
+        base_err = (r.stderr.strip() or r.stdout.strip() or "nmcli connect failed")
+        lower_err = base_err.lower()
+
+        # If key-mgmt/security properties are missing, build profile explicitly.
+        if "key-mgmt" in lower_err or "802-11-wireless-security" in lower_err:
+            _nmcli(["connection", "delete", ssid], timeout=10)
+
+            add = _nmcli(["connection", "add", "type", "wifi", "ifname", "wlan0", "con-name", ssid, "ssid", ssid], timeout=15)
+            if add.returncode != 0:
+                add_err = add.stderr.strip() or add.stdout.strip() or "failed to add profile"
+                return f"ERROR {add_err}"
+
+            # WPA/WPA2-PSK profile
+            mod_psk = _nmcli([
+                "connection", "modify", ssid,
+                "wifi-sec.key-mgmt", "wpa-psk",
+                "wifi-sec.psk", password,
+                "ipv4.method", "auto",
+                "ipv6.method", "ignore",
+            ], timeout=15)
+
+            if mod_psk.returncode == 0:
+                up_psk = _nmcli(["connection", "up", ssid], timeout=35)
+                if up_psk.returncode == 0:
+                    return f"WIFI_CONNECTED {ssid}"
+
+            # Retry with WPA3 SAE (some mobile hotspots default here).
+            mod_sae = _nmcli([
+                "connection", "modify", ssid,
+                "wifi-sec.key-mgmt", "sae",
+                "wifi-sec.psk", password,
+                "ipv4.method", "auto",
+                "ipv6.method", "ignore",
+            ], timeout=15)
+
+            if mod_sae.returncode == 0:
+                up_sae = _nmcli(["connection", "up", ssid], timeout=35)
+                if up_sae.returncode == 0:
+                    return f"WIFI_CONNECTED {ssid}"
+                sae_err = up_sae.stderr.strip() or up_sae.stdout.strip() or "failed to activate SAE profile"
+                return f"ERROR {sae_err}"
+
+            psk_err = mod_psk.stderr.strip() or mod_psk.stdout.strip() or "failed to configure WPA-PSK"
+            sae_cfg_err = mod_sae.stderr.strip() or mod_sae.stdout.strip() or "failed to configure SAE"
+            return f"ERROR {psk_err}; {sae_cfg_err}"
+
+        return f"ERROR {base_err}"
+    except FileNotFoundError:
+        # nmcli not available — fall back to wpa_supplicant
+        try:
+            conf_block = (
+                f'\nnetwork={{\n'
+                f'    ssid="{ssid}"\n'
+                f'    psk="{password}"\n'
+                f'}}\n'
+            )
+            wpa_conf = Path("/etc/wpa_supplicant/wpa_supplicant.conf")
+            with open(wpa_conf, "a") as f:
+                f.write(conf_block)
+            subprocess.run(["wpa_cli", "-i", "wlan0", "reconfigure"], capture_output=True, timeout=10)
+            return f"WIFI_CONNECTED {ssid}"
+        except Exception as exc2:
+            logger.error("wifi-connect fallback failed: %s", exc2)
+            return f"ERROR wifi-connect failed: {exc2}"
+    except Exception as exc:
+        logger.error("wifi-connect failed: %s", exc)
+        return f"ERROR wifi-connect failed: {exc}"
+
+
+def _wifi_forget(ssid: str) -> str:
+    """Forget (delete) a saved Wi-Fi connection using nmcli."""
+    try:
+        # Find connection name matching the SSID
+        r = subprocess.run(
+            ["sudo", "nmcli", "-t", "-f", "NAME,TYPE", "connection", "show"],
+            capture_output=True, text=True, timeout=10
+        )
+        conn_name = None
+        for line in r.stdout.splitlines():
+            parts = line.split(":")
+            if len(parts) >= 2 and parts[1].strip() == "802-11-wireless":
+                if parts[0].strip() == ssid:
+                    conn_name = parts[0].strip()
+                    break
+        if conn_name is None:
+            conn_name = ssid  # Try using SSID directly as connection name
+
+        d = subprocess.run(
+            ["sudo", "nmcli", "connection", "delete", conn_name],
+            capture_output=True, text=True, timeout=10
+        )
+        if d.returncode == 0:
+            return f"WIFI_FORGOTTEN {ssid}"
+        return f"ERROR {d.stderr.strip() or d.stdout.strip()}"
+    except FileNotFoundError:
+        # nmcli not available — remove from wpa_supplicant.conf
+        try:
+            wpa_conf = Path("/etc/wpa_supplicant/wpa_supplicant.conf")
+            if wpa_conf.exists():
+                content = wpa_conf.read_text()
+                import re
+                pattern = r'network\s*=\s*\{[^}]*ssid\s*=\s*"' + re.escape(ssid) + r'"[^}]*\}'
+                new_content = re.sub(pattern, "", content, flags=re.DOTALL)
+                wpa_conf.write_text(new_content)
+                subprocess.run(["wpa_cli", "-i", "wlan0", "reconfigure"], capture_output=True, timeout=10)
+            return f"WIFI_FORGOTTEN {ssid}"
+        except Exception as exc2:
+            logger.error("wifi-forget fallback failed: %s", exc2)
+            return f"ERROR wifi-forget failed: {exc2}"
+    except Exception as exc:
+        logger.error("wifi-forget failed: %s", exc)
+        return f"ERROR wifi-forget failed: {exc}"
+
+
+def start_ble_peripheral():
+    """Start BLE GATT peripheral if enabled in config."""
+    global ble_peripheral
+
+    ble_cfg = (config or {}).get("ble", {})
+    if not ble_cfg.get("enabled", True):
+        logger.info("BLE peripheral disabled in config")
+        return False
+
+    required_keys = ["service_uuid", "write_char_uuid", "notify_char_uuid"]
+    missing_keys = [key for key in required_keys if not ble_cfg.get(key)]
+    if missing_keys:
+        logger.error(
+            "BLE config missing required key(s): %s. Please set them in config.json.",
+            ", ".join(missing_keys),
+        )
+        return False
+
+    if ble_peripheral and ble_peripheral.running:
+        return True
+
+    try:
+        from ble.peripheral import BleConfig, PiBleGattPeripheral
+    except Exception as e:
+        logger.error("BLE import failed: %s", e)
+        return False
+
+    peripheral_config = BleConfig(
+        device_name=ble_cfg.get("device_name", "PiDisplayManager"),
+        service_uuid=ble_cfg.get("service_uuid"),
+        write_char_uuid=ble_cfg.get("write_char_uuid"),
+        notify_char_uuid=ble_cfg.get("notify_char_uuid"),
+    )
+
+    ble_peripheral = PiBleGattPeripheral(logger=logger, config=peripheral_config, handler=_handle_ble_command)
+    started = ble_peripheral.start()
+    if started:
+        logger.info("BLE peripheral initialized")
+    return started
+
+
+def stop_ble_peripheral():
+    """Stop BLE GATT peripheral if running."""
+    global ble_peripheral
+
+    if ble_peripheral is None:
+        return
+
+    try:
+        ble_peripheral.stop()
+    except Exception as e:
+        logger.warning("Failed to stop BLE peripheral cleanly: %s", e)
+    finally:
+        ble_peripheral = None
 
 
 def create_playlist(name, playlist_type="image", delay=5):
@@ -722,8 +1171,47 @@ def delete_playlist(playlist_id):
     
     save_playlists_db()
     
+    if playlists_db.get("default_playlist") == playlist_id:
+        playlists_db["default_playlist"] = None
+        save_playlists_db()
+    
     logger.info("Deleted playlist: %s", playlist_id)
     return {"status": "success", "message": "Playlist deleted"}
+
+
+def set_default_playlist(playlist_id):
+    """Mark a playlist as the default (auto-starts on boot)."""
+    if playlist_id not in playlists_db.get("playlists", {}):
+        return {"status": "error", "message": "Playlist not found"}
+    playlists_db["default_playlist"] = playlist_id
+    save_playlists_db()
+    logger.info("Default playlist set: %s", playlist_id)
+    return {"status": "success", "message": "Default playlist set", "playlist_id": playlist_id}
+
+
+def clear_default_playlist():
+    """Clear the default playlist setting."""
+    playlists_db["default_playlist"] = None
+    save_playlists_db()
+    logger.info("Default playlist cleared")
+    return {"status": "success", "message": "Default playlist cleared"}
+
+
+def start_default_playlist():
+    """
+    Start the default playlist if one is configured.
+    Returns True if the slideshow was launched, False otherwise.
+    """
+    playlist_id = playlists_db.get("default_playlist")
+    if not playlist_id or playlist_id not in playlists_db.get("playlists", {}):
+        return False
+    result = start_slideshow(playlist_id)
+    started = result.get("status") == "started"
+    if started:
+        logger.info("Default playlist auto-started: %s", playlist_id)
+    else:
+        logger.warning("Default playlist failed to start: %s", result.get("message"))
+    return started
 
 
 def list_playlists():
@@ -748,7 +1236,8 @@ def list_playlists():
             "created": info.get("created", ""),
             "delay": info.get("delay", 5),
             "is_active": playlists_db.get("active_playlist") == playlist_id,
-            "is_playing": current_playlist == playlist_id
+            "is_playing": current_playlist == playlist_id,
+            "is_default": playlists_db.get("default_playlist") == playlist_id
         })
     return playlists
 
@@ -1852,8 +2341,8 @@ def start_video_playback(playlist_id):
         return {"status": "error", "message": str(e)}
 
 
-def stop_video_playback():
-    """Stop video playback and kill all VLC processes"""
+def stop_video_playback(start_idle=True):
+    """Stop video playback and kill all VLC processes."""
     global video_process, current_playlist
 
     if video_process is None:
@@ -1884,7 +2373,8 @@ def stop_video_playback():
     except Exception as e:
         logger.error("Error running pkill: %s", str(e))
 
-    start_idle_screen()
+    if start_idle:
+        start_idle_screen()
     return {"status": "stopped", "message": "Video playback stopped"}
 
 

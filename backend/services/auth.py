@@ -10,6 +10,8 @@ import time
 import os
 from pathlib import Path
 
+ALLOWED_ROLES = {"admin", "manager"}
+
 # Session storage (in production, use Redis or database)
 active_sessions = {}
 failed_attempts = {}
@@ -45,6 +47,13 @@ def load_auth_config():
     
     with open(auth_file, 'r') as f:
         return json.load(f)
+
+
+def save_auth_config(config):
+    """Persist authentication configuration to auth.json"""
+    auth_file = Path(__file__).parent.parent.parent / "auth.json"
+    with open(auth_file, 'w') as f:
+        json.dump(config, f, indent=2)
 
 
 def hash_password(password):
@@ -187,3 +196,115 @@ def authenticate_user(username, password):
     else:
         record_failed_attempt(username)
         return False, "Invalid username or password"
+
+
+def list_users():
+    """List users without exposing credentials"""
+    config = load_auth_config()
+    users = []
+    for user in config.get('users', []):
+        users.append({
+            'username': user.get('username', ''),
+            'role': user.get('role', 'manager')
+        })
+    return users
+
+
+def create_user(username, password, role):
+    """Create a new user in auth.json"""
+    username = (username or '').strip()
+    role = (role or '').strip().lower()
+
+    if not username:
+        return False, "Username is required"
+    if not password:
+        return False, "Password is required"
+    if role not in ALLOWED_ROLES:
+        return False, "Role must be either 'admin' or 'manager'"
+
+    config = load_auth_config()
+    users = config.setdefault('users', [])
+
+    if any(user.get('username') == username for user in users):
+        return False, "Username already exists"
+
+    users.append({
+        'username': username,
+        'password': hash_password(password),
+        'role': role
+    })
+    save_auth_config(config)
+    return True, "User created successfully"
+
+
+def update_user(username, new_username=None, password=None, role=None):
+    """Update existing user credentials or role"""
+    username = (username or '').strip()
+    if not username:
+        return False, "Username is required"
+
+    config = load_auth_config()
+    users = config.get('users', [])
+
+    target_user = None
+    for user in users:
+        if user.get('username') == username:
+            target_user = user
+            break
+
+    if not target_user:
+        return False, "User not found"
+
+    if new_username is not None:
+        candidate = new_username.strip()
+        if not candidate:
+            return False, "New username cannot be empty"
+        if candidate != username and any(user.get('username') == candidate for user in users):
+            return False, "Username already exists"
+        target_user['username'] = candidate
+
+    if password:
+        target_user['password'] = hash_password(password)
+
+    if role is not None:
+        normalized_role = role.strip().lower()
+        if normalized_role not in ALLOWED_ROLES:
+            return False, "Role must be either 'admin' or 'manager'"
+
+        if target_user.get('role') == 'admin' and normalized_role != 'admin':
+            admin_count = sum(1 for user in users if user.get('role') == 'admin')
+            if admin_count <= 1:
+                return False, "At least one admin user must remain"
+
+        target_user['role'] = normalized_role
+
+    save_auth_config(config)
+    return True, "User updated successfully"
+
+
+def delete_user(username):
+    """Delete a user from auth.json"""
+    username = (username or '').strip()
+    if not username:
+        return False, "Username is required"
+
+    config = load_auth_config()
+    users = config.get('users', [])
+
+    target_user = None
+    for user in users:
+        if user.get('username') == username:
+            target_user = user
+            break
+
+    if not target_user:
+        return False, "User not found"
+
+    if target_user.get('role') == 'admin':
+        admin_count = sum(1 for user in users if user.get('role') == 'admin')
+        if admin_count <= 1:
+            return False, "Cannot delete the last admin user"
+
+    users.remove(target_user)
+    save_auth_config(config)
+    return True, "User deleted successfully"

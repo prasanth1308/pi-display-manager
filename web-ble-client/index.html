@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pi BLE Web Client</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main class="app">
+    <header class="header">
+      <h1>Pi BLE Web Client</h1>
+      <p>Connect to PiDisplayManager over BLE GATT, send commands, and view notifications.</p>
+    </header>
+
+    <section class="card">
+      <h2>Connection</h2>
+      <div class="grid two">
+        <label>
+          Device name
+          <input id="deviceName" type="text" value="PiDisplayManager" />
+        </label>
+        <label>
+          Service UUID
+          <input id="serviceUuid" type="text" value="ff86ccb1-2d99-41ee-b1a6-0afec8f575d8" />
+        </label>
+      </div>
+      <div class="grid two">
+        <label>
+          Write characteristic UUID
+          <input id="writeUuid" type="text" value="f1002801-8908-4e32-a929-f1b5fc6adf46" />
+        </label>
+        <label>
+          Notify characteristic UUID
+          <input id="notifyUuid" type="text" value="808c187c-e34d-43b8-9661-4c135094cdcb" />
+        </label>
+      </div>
+      <div class="actions">
+        <button id="connectBtn">Connect</button>
+        <button id="disconnectBtn" disabled>Disconnect</button>
+      </div>
+      <p id="status" class="status">Disconnected</p>
+      <p class="hint">Web Bluetooth requires a user gesture and a compatible browser (Chrome/Edge over HTTPS or localhost).</p>
+    </section>
+
+    <section class="card">
+      <h2>Send Command</h2>
+      <div class="command-row">
+        <input id="commandInput" type="text" placeholder="Type command (e.g. ping, status, stop)" />
+        <button id="sendBtn" disabled>Send</button>
+      </div>
+      <div class="quick-actions">
+        <button data-cmd="ping" class="quick" disabled>ping</button>
+        <button data-cmd="status" class="quick" disabled>status</button>
+        <button data-cmd="stop" class="quick" disabled>stop</button>
+        <button data-cmd="default-start" class="quick" disabled>default-start</button>
+      </div>
+    </section>
+
+    <section class="card" id="wifi-section">
+      <h2>Wi-Fi</h2>
+
+      <div class="wifi-toolbar">
+        <button id="wifiListBtn" class="quick" disabled>Scan networks</button>
+        <span id="connectedSsid" class="connected-badge" style="display:none"></span>
+      </div>
+
+      <!-- Network list -->
+      <div id="wifiList" class="wifi-list" style="display:none"></div>
+
+      <!-- Connect form -->
+      <details id="wifiConnectDetails" class="wifi-details">
+        <summary>Connect to a network</summary>
+        <div class="wifi-form">
+          <label>
+            SSID
+            <input id="wifiSsidInput" type="text" placeholder="Network name" />
+          </label>
+          <label>
+            Password
+            <div class="pw-wrap">
+              <input id="wifiPasswordInput" type="password" placeholder="Password" />
+              <button type="button" id="wifiTogglePw" class="icon-btn" title="Show/hide password">👁️</button>
+            </div>
+          </label>
+          <button id="wifiConnectBtn" class="quick" disabled>Connect</button>
+        </div>
+      </details>
+
+      <!-- Forget form -->
+      <details id="wifiForgetDetails" class="wifi-details">
+        <summary>Forget a saved network</summary>
+        <div class="wifi-form">
+          <label>
+            SSID to forget
+            <input id="wifiForgetInput" type="text" placeholder="Saved network name" />
+          </label>
+          <button id="wifiForgetBtn" class="quick" disabled>Forget</button>
+        </div>
+      </details>
+
+      <p id="wifiStatus" class="wifi-status"></p>
+    </section>
+
+    <section class="card">
+      <h2>Logs</h2>
+      <div class="log-actions">
+        <button id="clearLogsBtn">Clear</button>
+      </div>
+      <pre id="logs" class="logs"></pre>
+    </section>
+  </main>
+
+  <script src="./app.js"></script>
+</body>
+</html>

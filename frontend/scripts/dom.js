@@ -7,6 +7,7 @@ const DOM = {
   // Buttons
   playBtn: document.getElementById("play-btn"),
   stopBtn: document.getElementById("stop-btn"),
+  refreshDisplayBtn: document.getElementById("refresh-display-btn"),
   newPlaylistBtn: document.getElementById("new-playlist-btn"),
   uploadImageBtn: document.getElementById("upload-image-btn"),
   downloadVideoTriggerBtn: document.getElementById(

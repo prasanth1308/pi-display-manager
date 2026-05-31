@@ -50,12 +50,15 @@ const PlaylistManager = {
 
     if (playlist.is_active) card.classList.add("active");
     if (playlist.is_playing) card.classList.add("playing");
+    if (playlist.is_default) card.classList.add("default");
 
     const badges = [];
     if (playlist.is_playing)
       badges.push('<span class="mini-badge playing">▶ Playing</span>');
     if (playlist.is_active)
       badges.push('<span class="mini-badge active">✓ Active</span>');
+    if (playlist.is_default)
+      badges.push('<span class="mini-badge default">⭐ Default</span>');
 
     const playlistType = playlist.type || CONTENT_TYPES.IMAGE;
     const isVideo = playlistType === CONTENT_TYPES.VIDEO;
@@ -81,6 +84,7 @@ const PlaylistManager = {
       <div class="playlist-header">
         <div class="playlist-name">${config.icon} ${UI.escapeHtml(playlist.name)}</div>
         <div class="playlist-actions">
+          ${playlist.id !== "default" ? `<button class="icon-btn toggle-default" title="${playlist.is_default ? "Remove default" : "Set as default"}">${playlist.is_default ? "⭐" : "☆"}</button>` : ""}
           ${playlist.id !== "default" ? '<button class="icon-btn edit-playlist" title="Edit Settings">⚙️</button>' : ""}
           ${playlist.id !== "default" ? '<button class="icon-btn delete-playlist" title="Delete">🗑️</button>' : ""}
         </div>
@@ -109,6 +113,19 @@ const PlaylistManager = {
         );
       }
     });
+
+    // Toggle default button
+    const defaultBtn = card.querySelector(".toggle-default");
+    if (defaultBtn) {
+      defaultBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (playlist.is_default) {
+          this.clearDefault(playlist.id);
+        } else {
+          this.setAsDefault(playlist.id);
+        }
+      });
+    }
 
     // Edit button
     const editBtn = card.querySelector(".edit-playlist");
@@ -278,6 +295,45 @@ const PlaylistManager = {
     } else {
       UI.showToast(
         data?.message || "Failed to update playlist",
+        TOAST_TYPES.ERROR,
+      );
+    }
+  },
+
+  /**
+   * Set a playlist as the default (auto-starts on boot)
+   */
+  async setAsDefault(playlistId) {
+    UI.showLoading();
+    const data = await API.setDefaultPlaylist(playlistId);
+    UI.hideLoading();
+    if (data && data.status === "success") {
+      UI.showToast(
+        "Default playlist set — will auto-start on boot",
+        TOAST_TYPES.SUCCESS,
+      );
+      this.load();
+    } else {
+      UI.showToast(
+        data?.message || "Failed to set default playlist",
+        TOAST_TYPES.ERROR,
+      );
+    }
+  },
+
+  /**
+   * Clear the default playlist
+   */
+  async clearDefault(playlistId) {
+    UI.showLoading();
+    const data = await API.clearDefaultPlaylist(playlistId);
+    UI.hideLoading();
+    if (data && data.status === "success") {
+      UI.showToast("Default playlist cleared", TOAST_TYPES.SUCCESS);
+      this.load();
+    } else {
+      UI.showToast(
+        data?.message || "Failed to clear default playlist",
         TOAST_TYPES.ERROR,
       );
     }

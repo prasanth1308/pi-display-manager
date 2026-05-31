@@ -41,6 +41,10 @@ const API = {
     }),
   deletePlaylist: (playlistId) =>
     API.call(`/playlists/${playlistId}`, { method: "DELETE" }),
+  setDefaultPlaylist: (playlistId) =>
+    API.call(`/playlists/${playlistId}/set-default`, { method: "POST" }),
+  clearDefaultPlaylist: (playlistId) =>
+    API.call(`/playlists/${playlistId}/set-default`, { method: "DELETE" }),
 
   // Image endpoints
   getPlaylistImages: (playlistId) =>
@@ -137,6 +141,7 @@ const API = {
   // Control endpoints
   startPlayback: (playlistId) => API.call(`/start?playlist=${playlistId}`),
   stopPlayback: () => API.call("/stop"),
+  refreshDisplay: () => API.call("/refresh-display", { method: "POST" }),
 
   // Idle screen endpoints
   getIdleConfig: () => API.call("/idle-config"),

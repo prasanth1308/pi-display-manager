@@ -14,7 +14,15 @@ import sys
 from pathlib import Path as _Path
 sys.path.insert(0, str(_Path(__file__).parent.parent))
 
-from services.auth import authenticate_user, validate_session, destroy_session
+from services.auth import (
+    authenticate_user,
+    validate_session,
+    destroy_session,
+    list_users,
+    create_user,
+    update_user,
+    delete_user,
+)
 
 # Import service layer module
 import services.service as service
@@ -25,8 +33,9 @@ from services.service import (
     setup_logging, ensure_directories, load_config, load_playlists_db,
     
     # Service functions
-    get_status, start_slideshow, stop_slideshow, clear_framebuffer,
+    get_status, start_slideshow, stop_slideshow, clear_framebuffer, refresh_display,
     list_playlists, create_playlist, update_playlist, delete_playlist,
+    set_default_playlist, clear_default_playlist, start_default_playlist,
     get_playlist_images_list, get_playlist_videos_list,
     upload_image, delete_image, delete_video,
     skip_image, unskip_image,
@@ -41,6 +50,9 @@ from services.service import (
     # Scheduler
     load_schedules_db, list_schedules, get_schedule, create_schedule,
     update_schedule, delete_schedule, stop_scheduler, start_scheduler,
+
+    # BLE
+    start_ble_peripheral,
 )
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -86,6 +98,36 @@ def require_auth(f):
         # Pass user_info to the route function
         return f(user_info=user_info, *args, **kwargs)
     
+    return decorated_function
+
+
+def require_admin(f):
+    """Decorator to require admin role"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        session_token = request.cookies.get('session_token')
+
+        if not session_token:
+            return jsonify({
+                "status": "error",
+                "message": "Unauthorized. Please login."
+            }), 401
+
+        user_info = validate_session(session_token)
+        if not user_info:
+            return jsonify({
+                "status": "error",
+                "message": "Invalid or expired session. Please login."
+            }), 401
+
+        if user_info.get('role') != 'admin':
+            return jsonify({
+                "status": "error",
+                "message": "Forbidden. Admin access required."
+            }), 403
+
+        return f(user_info=user_info, *args, **kwargs)
+
     return decorated_function
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -151,6 +193,65 @@ def logout():
     response.set_cookie('session_token', '', expires=0)
     return response
 
+
+@app.route('/api/admin/users', methods=['GET'])
+@require_admin
+def get_admin_users(user_info):
+    """List users for admin management"""
+    return jsonify({
+        "status": "success",
+        "users": list_users()
+    })
+
+
+@app.route('/api/admin/users', methods=['POST'])
+@require_admin
+def create_admin_user(user_info):
+    """Create a new user (admin/manager)"""
+    data = request.get_json() or {}
+    username = data.get('username')
+    password = data.get('password')
+    role = data.get('role')
+
+    success, message = create_user(username, password, role)
+    if not success:
+        return jsonify({"status": "error", "message": message}), 400
+
+    return jsonify({"status": "success", "message": message})
+
+
+@app.route('/api/admin/users/<username>', methods=['PUT'])
+@require_admin
+def update_admin_user(user_info, username):
+    """Update an existing user's credentials or role"""
+    data = request.get_json() or {}
+    new_username = data.get('new_username')
+    password = data.get('password')
+    role = data.get('role')
+
+    success, message = update_user(username, new_username, password, role)
+    if not success:
+        return jsonify({"status": "error", "message": message}), 400
+
+    return jsonify({"status": "success", "message": message})
+
+
+@app.route('/api/admin/users/<username>', methods=['DELETE'])
+@require_admin
+def delete_admin_user(user_info, username):
+    """Delete an existing user"""
+    if user_info.get('username') == username:
+        return jsonify({
+            "status": "error",
+            "message": "You cannot delete your own active account"
+        }), 400
+
+    success, message = delete_user(username)
+    if not success:
+        return jsonify({"status": "error", "message": message}), 400
+
+    return jsonify({"status": "success", "message": message})
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Playlist Routes
 # ═══════════════════════════════════════════════════════════════════════════
@@ -187,6 +288,18 @@ def update_existing_playlist(user_info, playlist_id):
 def delete_existing_playlist(user_info, playlist_id):
     """Delete a playlist"""
     return jsonify(delete_playlist(playlist_id))
+
+@app.route('/api/playlists/<playlist_id>/set-default', methods=['POST'])
+@require_auth
+def set_playlist_as_default(user_info, playlist_id):
+    """Mark a playlist as the default (auto-starts on boot)"""
+    return jsonify(set_default_playlist(playlist_id))
+
+@app.route('/api/playlists/<playlist_id>/set-default', methods=['DELETE'])
+@require_auth
+def unset_playlist_as_default(user_info, playlist_id):
+    """Remove the default playlist setting"""
+    return jsonify(clear_default_playlist())
 
 @app.route('/api/playlists/<playlist_id>/images', methods=['GET'])
 @require_auth
@@ -528,6 +641,14 @@ def clear_display(user_info):
     clear_framebuffer()
     return jsonify({"status": "success", "message": "Framebuffer cleared"})
 
+
+@app.route('/api/refresh-display', methods=['POST'])
+@require_auth
+def refresh_hdmi_display(user_info):
+    """Cycle HDMI output to force the display to re-claim the Pi signal"""
+    result = refresh_display()
+    return jsonify(result)
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Progress Tracking Routes
 # ═══════════════════════════════════════════════════════════════════════════
@@ -665,6 +786,19 @@ def serve_login():
     """Serve login page"""
     return send_file(service.STATIC_DIR / "login.html")
 
+
+@app.route('/admin')
+@app.route('/admin.html')
+def serve_admin():
+    """Serve admin page for admin users only"""
+    session_token = request.cookies.get('session_token')
+    user_info = validate_session(session_token)
+    if not user_info:
+        return redirect('/login.html')
+    if user_info.get('role') != 'admin':
+        return redirect('/')
+    return send_file(service.STATIC_DIR / "admin.html")
+
 # Serve static files from frontend
 @app.route('/frontend/<path:filename>')
 def serve_static(filename):
@@ -703,15 +837,19 @@ def initialize_app():
     
     # Configure Flask static folder after service initialization
     app.static_folder = str(service.STATIC_DIR)
-    
-    # Load idle config
-    cfg = get_idle_config()
-    if cfg.get("enabled") and cfg.get("image_path"):
-        start_idle_screen()
+
+    # Auto-start default playlist if configured; otherwise start idle screen
+    if not start_default_playlist():
+        cfg = get_idle_config()
+        if cfg.get("enabled") and cfg.get("image_path"):
+            start_idle_screen()
     
     # Start scheduler
     load_schedules_db()
     start_scheduler()
+
+    # Start BLE GATT peripheral for Mac <-> Pi text commands
+    start_ble_peripheral()
     
     service.logger.info("=== Pi Display Manager Flask Started ===")
     service.logger.info("API running on http://localhost:%d", service.config.get("api_port", 80))
