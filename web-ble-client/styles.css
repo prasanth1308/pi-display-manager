@@ -152,3 +152,127 @@ button.quick {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Wi-Fi section ──────────────────────────────────────────────────────────── */
+.wifi-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.connected-badge {
+  display: inline-block;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  background: #d1fae5;
+  color: #065f46;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.wifi-list {
+  border: 1px solid #c3b9ab;
+  border-radius: 10px;
+  overflow: hidden;
+  margin: 0.5rem 0;
+}
+
+.wifi-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.8rem;
+  border-bottom: 1px solid #e5ddd3;
+  font-size: 0.9rem;
+}
+
+.wifi-row:last-child { border-bottom: none; }
+
+.wifi-row--connected { background: #f0fdf4; }
+
+.wifi-ssid {
+  flex: 1;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wifi-signal {
+  font-size: 0.78rem;
+  letter-spacing: -0.05em;
+  color: #5e5a55;
+  white-space: nowrap;
+}
+
+.wifi-badge {
+  margin-left: 0.4rem;
+  padding: 0.15rem 0.45rem;
+  background: #d1fae5;
+  color: #065f46;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.wifi-pick {
+  padding: 0.3rem 0.65rem;
+  font-size: 0.82rem;
+  background: #344054;
+}
+
+.wifi-details {
+  margin-top: 0.75rem;
+  border: 1px solid #c3b9ab;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.wifi-details summary {
+  padding: 0.6rem 0.8rem;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9rem;
+  user-select: none;
+  list-style: none;
+}
+
+.wifi-details summary:hover { background: rgba(0,0,0,0.04); }
+
+.wifi-form {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.75rem 0.8rem 0.8rem;
+  border-top: 1px solid #e5ddd3;
+}
+
+.pw-wrap {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.pw-wrap input { flex: 1; }
+
+.icon-btn {
+  padding: 0.4rem 0.6rem;
+  background: #e5ddd3;
+  color: var(--ink);
+  border-radius: 8px;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.icon-btn:hover { background: #d3c8bc; }
+
+.wifi-status {
+  margin: 0.55rem 0 0;
+  font-size: 0.88rem;
+  font-weight: 500;
+  min-height: 1.4em;
+}
+
+.wifi-status.ok  { color: var(--ok); }
+.wifi-status.err { color: var(--err); }
